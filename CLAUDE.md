@@ -25,7 +25,7 @@ src/retriever.py               착용 기록 검색(RAG): 검색 문서 생성, 
 src/config.py                  llm 팩토리, get_text, 경로 상수, WEATHER_MODE, 날짜 오버라이드(TODAY_OVERRIDE, today()), 상대 날짜 해석
 src/guardrails.py              input_guard, output_guard, REFUSAL_MESSAGES, 감사 로그
 src/middleware.py              LoggingMiddleware
-src/tracer.py                  FileTracer (JSONL)
+src/tracer.py                  FileTracer (JSONL, 턴별 도구 호출·결과 수집)
 src/chat.py                    CLI 대화 진입점 (HITL 프롬프트), 한 턴 공통 처리 ask()
 data/                          clothes, wear_log, profile, calendar, recommendations JSON
 data/fixtures/                 평가·오프라인용 날씨 fixture (rainy, cold, mild, error)
@@ -50,6 +50,11 @@ run.sh, Dockerfile             선택
 
 ## 주고받는 형식
 - 진입점: `python -m src.chat` (명령 `/date YYYY-MM-DD`, `/quit`), `python evaluation/run_eval.py`. 정해진 시간 자동 실행은 없고, 사용자가 "오늘 뭐 입지?"라고 물으면 그날 추천이 시작된다
+- `ask()`는 `{"answer", "contexts", "trace"}` dict를 돌려준다(상세는 extra.md §12.3). `chat.py`는 `answer`만 출력한다
+  - `answer`: `output_guard`를 거친 최종 응답 문자열
+  - `contexts`: 이번 턴에 실행된 MCP 도구 결과 전체(호출 순서). 항목은 `{"kind": "retrieval" | "tool", "agent", "tool", "content"}`이고 `search_wear_history`만 `retrieval`이다. Supervisor 핸드오프는 넣지 않는다
+  - `trace`: 이번 턴의 도구 호출 목록 `{"agent", "tool", "args", "status": "ok" | "error" | "interrupted"}`. HITL interrupt는 `ask()`가 `interrupted`로 넣는다. `expected_tools` 판정은 이것으로 한다
+  - `contexts`·`trace`는 `FileTracer`가 모은 이번 턴의 도구 이벤트로 만든다. `input_guard`에서 막히면 둘 다 빈 리스트다
 - thread_id는 `{user_id}:{YYYY-MM-DD}`, 기본 user_id는 `me`. 평가는 user_id 자리에 `eval-{문항 id}`를 쓴다(데이터 파일은 user_id로 나누지 않는다)
 - 도구 결과는 JSON 문자열이다. 오류는 예외 대신 "무엇이 잘못됐고 어떻게 다시 호출할지"를 담은 문자열로 돌려준다
 - 추천 출력: 오늘 날씨 한 줄 → 번호 붙은 후보 2~3개(각각 이유) → `챙길 것:` 한 줄(날씨 플래그 문구 + 운동 일정이면 "운동복", 없으면 "없음"). 옷 이름은 clothes.json의 `name`을 그대로 쓴다

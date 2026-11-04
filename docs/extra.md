@@ -394,7 +394,7 @@ REFUSAL_MESSAGES = {
 |---|---|---|
 | `LoggingMiddleware` | 하위 Agent | before/after_model(+`awrap_model_call`)로 입력 미리보기, 도구 호출 결정, 토큰 수를 `logs/agent.jsonl`에 기록 |
 | `ToolCallLimitMiddleware(thread_limit=10)` | 하위 Agent | 도구 호출 폭주 방지 |
-| `FileTracer` | 최상위 `callbacks` | 모델 지연·토큰, 도구 시작·종료, 오류를 `logs/trace.jsonl`에 기록. 하위 Agent 도구 호출은 여기서 수집한다 |
+| `FileTracer` | 최상위 `callbacks` | 모델 지연·토큰, 도구 시작·종료, 오류를 `logs/trace.jsonl`에 기록. 하위 Agent 도구 호출은 여기서 수집한다. 이번 턴의 도구 호출·결과를 따로 모아 `ask()`가 `contexts`·`trace`로 돌려준다(§12.3) |
 | `recursion_limit=25` | Supervisor 호출 config | |
 
 ---
@@ -403,7 +403,7 @@ REFUSAL_MESSAGES = {
 
 ### 12.1 `python -m src.chat`
 - 시작 시 `build_app()`으로 MCP 클라이언트와 Supervisor를 만들고, 실행 설정이 바뀔 때만 다시 만든다(§3 실행 설정 전달).
-- 입력마다 `ask()`(§12.2)를 부른다: `input_guard` → `app.astream(stream_mode="updates")`로 Agent 이동만 짧게 표시 → interrupt가 있으면 `ask()`가 인자로 받은 결정 함수(`decide`)로 재개 값을 얻는다 → 최종 응답에 `output_guard` 후 출력.
+- 입력마다 `ask()`(§12.2)를 부른다: `input_guard` → `app.astream(stream_mode="updates")`로 Agent 이동만 짧게 표시 → interrupt가 있으면 `ask()`가 인자로 받은 결정 함수(`decide`)로 재개 값을 얻는다 → 최종 응답에 `output_guard` 후 반환(§12.3). `chat.py`는 반환값의 `answer`만 출력한다.
 - `ask()`는 입력을 직접 받지 않는다. `chat.py`는 §10 CLI 프롬프트를 `decide`로 넘기고, `run_eval.py`는 `note`의 `hitl` 값을 돌려주는 함수를 넘긴다.
 - 명령: `/date YYYY-MM-DD`(`TODAY_OVERRIDE`를 바꾸고 `build_app()`을 다시 불러 MCP 서버에도 반영한다. 스레드도 바뀜), `/quit`.
 
@@ -416,6 +416,34 @@ REFUSAL_MESSAGES = {
 
 - 그날 옷에 대한 피드백은 그날 받는다("오늘 추웠어" → §10.2). 다음 날 따로 묻지 않는다.
 - 자동 기록은 Agent 도구가 아니라 코드가 한다. HITL을 거치지 않는다.
+
+### 12.3 `ask()` 반환 형식
+`ask()`는 한 턴의 결과를 `answer`, `contexts`, `trace` 세 키의 dict로 돌려준다. `chat.py`는 `answer`만 출력하고, `run_eval.py`는 셋을 모두 쓴다.
+
+```json
+{
+  "answer": "오늘은 흐리고 오후 3~6시에 비 …\n1) …\n챙길 것: 우산\n다르게 입거나 …",
+  "contexts": [
+    {"kind": "tool", "agent": "stylist_agent", "tool": "get_today_weather", "content": "{\"date\": \"2026-11-04\", …}"},
+    {"kind": "tool", "agent": "stylist_agent", "tool": "get_candidates", "content": "{…}"},
+    {"kind": "retrieval", "agent": "stylist_agent", "tool": "search_wear_history", "content": "{…}"}
+  ],
+  "trace": [
+    {"agent": "supervisor", "tool": "transfer_to_stylist_agent", "args": {}, "status": "ok"},
+    {"agent": "stylist_agent", "tool": "get_today_weather", "args": {}, "status": "ok"},
+    {"agent": "stylist_agent", "tool": "search_wear_history", "args": {"query": "비 오는 날", "rain": "yes", "k": 3}, "status": "ok"}
+  ]
+}
+```
+
+| 키 | 내용 |
+|---|---|
+| `answer` | `output_guard`를 거친 최종 응답 문자열. `input_guard`에서 막히면 정해진 거절 문구 |
+| `contexts` | 이번 턴에 실행된 MCP 도구의 결과 전체, 호출 순서대로. `kind`로 검색과 도구를 나눈다. `search_wear_history`는 `retrieval`, 그 밖의 MCP 도구는 `tool`이다. `content`는 도구가 돌려준 문자열 그대로이며, 오류 안내 문자열과 `[가려짐]` 처리(§8.3)도 그대로 담는다. Supervisor 핸드오프·`forward_message`는 결과가 근거 자료가 아니므로 넣지 않는다 |
+| `trace` | 이번 턴의 도구 호출 목록, 호출 순서대로. Supervisor 핸드오프도 `agent: "supervisor"`로 넣는다. `status`는 `ok` / `error` / `interrupted`다. HITL 도구는 interrupt 시점에는 실행 전이라 콜백이 없으므로, `ask()`가 interrupt 값(`action_requests`)에서 꺼내 `interrupted`로 넣는다. 승인·수정 후 실행되면 `ok` 항목이 이어서 붙는다 |
+
+- `contexts`와 `trace`는 `FileTracer`(§11.4)가 `logs/trace.jsonl`에 쓰는 도구 시작·종료 이벤트를 이번 턴 것만 모아 만든다. 출처가 같으므로 둘은 trace.jsonl과 어긋나지 않는다.
+- `input_guard`에서 막힌 턴은 `contexts`와 `trace`가 빈 리스트다.
 
 ---
 
@@ -466,9 +494,9 @@ id,category,input,expected_traits,forbidden,expected_tools,note
 ### 13.3 `evaluation/run_eval.py` 판정
 - `WEATHER_MODE=fixture`로 돌리고, 문항의 fixture와 평가 날짜(`TODAY_OVERRIDE`)는 §3 방식으로 MCP 서버에 넘긴다. 설정이 같은 문항끼리는 앱을 다시 쓰고, 설정이 바뀔 때만 `build_app()`을 다시 부른다. 문항마다 새 thread_id(`eval-{id}:{YYYY-MM-DD}`, user_id 자리에 문항 id)를 쓰며, 데이터 파일은 실행 전에 백업하고 끝나면 복원한다. `note`의 사전 조건은 코드로 만든다.
 - 한 문항은 아래 셋을 모두 만족해야 통과다.
-  1. `expected_tools`: 트레이서로 수집한 도구 호출(HITL interrupt 포함)에 모두 들어 있다 (코드 판정)
-  2. `forbidden`: 작은따옴표 항목은 응답 문자열에 없다(코드 판정). 나머지 항목은 judge가 판정한다
-  3. `expected_traits`: 항목마다 judge가 충족 여부를 판정한다 (lecture.md §9.5 LLM-as-Judge, judge 모델과 파라미터는 상수로 고정, `temperature=0`)
+  1. `expected_tools`: `ask()`가 돌려준 `trace`(§12.3, HITL은 `interrupted` 포함)의 `tool`에 모두 들어 있다 (코드 판정)
+  2. `forbidden`: 작은따옴표 항목은 `answer` 문자열에 없다(코드 판정). 나머지 항목은 judge가 `answer`를 보고 판정한다
+  3. `expected_traits`: 항목마다 judge가 `answer`의 충족 여부를 판정한다 (lecture.md §9.5 LLM-as-Judge, judge 모델과 파라미터는 상수로 고정, `temperature=0`)
 - 출력: category별 통과율과 실패 문항 목록을 콘솔에 찍고, 회차 결과를 `evaluation/round1_report.md`(1차), `evaluation/round2_report.md`(개선 후)로 남긴다. 리포트에는 실패 원인과 다음 회차에서 고칠 것을 적는다.
 - 필수 컬럼이 비었거나 category가 4종이 아닌 행은 조용히 넘기지 말고 "채점 제외"로 따로 표시한다.
 
