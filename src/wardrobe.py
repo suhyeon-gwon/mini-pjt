@@ -286,7 +286,9 @@ def filter_candidates(weather: dict, profile: dict, clothes: list[dict], wear_lo
                     wide = (max(1, rng[0] - step), min(5, rng[1] + step))
                     picked = [c for c in pool if wide[0] <= c["warmth"] <= wide[1]]
                     if picked:
-                        note = f"warmth {rng[0]}~{rng[1]}에 맞는 옷이 없어 {wide[0]}~{wide[1]}로 넓혔습니다"
+                        kind = {"top": "상의", "bottom": "하의", "outer": "아우터"}[cat]
+                        note = (f"오늘 날씨에 딱 맞는 {kind}(warmth {rng[0]}~{rng[1]})가 옷장에 없어 {wide[0]}~{wide[1]}로 넓혔습니다. "
+                                f"1번 이유에 날씨에 딱 맞는 {kind}가 없다고 밝히고, 가장 가까운 {kind}에 안에 겹쳐 입기를 안내하세요")
                         break
             entry["warmth"] = list(rng)
         else:
