@@ -6,7 +6,8 @@
 - Python, LangChain, LangGraph, FastMCP (패키지는 requirements.txt에 있는 것만 쓴다. 기상청 HTTP 호출은 표준 라이브러리 `urllib.request`)
 - 모델은 Amazon Bedrock `ChatBedrockConverse` (`us.anthropic.claude-sonnet-4-5-20250929-v1:0`, `us-east-1`). 분류·판정·라우팅·가드레일은 `temperature=0`
 - Agent 생성은 `langchain.agents`의 `create_agent`, 최상위는 `langgraph_supervisor`의 `create_supervisor`. Supervisor에는 `create_forward_message_tool("supervisor")`를 붙여 추천을 다시 쓰지 않고 원문으로 넘긴다
-- 도구는 자체 FastMCP 서버 2개(stdio)로 공급하고 `MultiServerMCPClient`로 붙인다. 그래서 **전부 비동기**다(`ainvoke`, `AsyncSqliteSaver`, `awrap_*`)
+- 도구는 자체 FastMCP 서버 2개(stdio)로 공급하고 `MultiServerMCPClient`로 붙인다. 그래서 **전부 비동기**다(`ainvoke`, `AsyncSqliteSaver`, `awrap_*`). 체크포인터 DB는 `logs/checkpoints.sqlite`다
+- MCP 서버는 `sys.executable -m src.mcp_weather`처럼 모듈로 띄우고 `cwd`는 프로젝트 루트로 둔다(서버 안의 `from src.… import`가 동작하게)
 - MCP 서버에는 실행 설정(`WEATHER_MODE`, `WEATHER_FIXTURE`, `TODAY_OVERRIDE`)을 서버별 `env`로 명시해 넘긴다(stdio는 환경변수를 다 물려주지 않는다). 설정이 바뀌면(`/date`, 평가 문항별 fixture) `build_app()`을 다시 부른다. 비밀 값은 넘기지 않고 서버가 `.env`를 읽는다
 - 구조화 출력은 `with_structured_output`으로 통일한다
 - RAG는 착용 기록 검색(`search_wear_history`) 한 곳에만 쓴다. BM25(`kiwipiepy`) + 인메모리 Chroma 하이브리드, 임베딩은 `BedrockEmbeddings`(`amazon.titan-embed-text-v2:0`)
@@ -14,6 +15,7 @@
 
 ## 폴더 구조 (제출 규약. 바꾸지 않는다)
 ```
+src/__init__.py                패키지 표시 (빈 파일)
 src/agent.py                   메인 에이전트 그래프: 하위 Agent 4개 + Supervisor 조립 (build_app)
 src/tools.py                   도메인 도구: MCP 서버에서 도구를 불러와 Agent별로 나눈다
 src/mcp_weather.py             FastMCP 날씨 서버
@@ -55,6 +57,7 @@ run.sh, Dockerfile             선택
   - `contexts`: 이번 턴에 실행된 MCP 도구 결과 전체(호출 순서). 항목은 `{"kind": "retrieval" | "tool", "agent", "tool", "content"}`이고 `search_wear_history`만 `retrieval`이다. Supervisor 핸드오프는 넣지 않는다
   - `trace`: 이번 턴의 도구 호출 목록 `{"agent", "tool", "args", "status": "ok" | "error" | "interrupted"}`. HITL interrupt는 `ask()`가 `interrupted`로 넣는다. `expected_tools` 판정은 이것으로 한다
   - `contexts`·`trace`는 `FileTracer`가 모은 이번 턴의 도구 이벤트로 만든다. `input_guard`에서 막히면 둘 다 빈 리스트다
+- "오늘"은 `today()`로만 얻는다. `TODAY_OVERRIDE`가 있으면 그 값, 없으면 시스템 날짜다(코드에 날짜를 박지 않는다). 샘플 데이터와 시드 기록은 2026-11-05(목)을 오늘로 보고 만들었으므로, 평가는 `TODAY_OVERRIDE=2026-11-05`로 고정하고 시연에서 문서대로 보이려면 `/date 2026-11-05`를 쓴다
 - thread_id는 `{user_id}:{YYYY-MM-DD}`, 기본 user_id는 `me`. 평가는 user_id 자리에 `eval-{문항 id}`를 쓴다(데이터 파일은 user_id로 나누지 않는다)
 - 도구 결과는 JSON 문자열이다. 오류는 예외 대신 "무엇이 잘못됐고 어떻게 다시 호출할지"를 담은 문자열로 돌려준다
 - 추천 출력: 오늘 날씨 한 줄 → 번호 붙은 후보 2~3개(각각 이유) → `챙길 것:` 한 줄(날씨 플래그 문구 + 운동 일정이면 "운동복", 없으면 "없음"). 옷 이름은 clothes.json의 `name`을 그대로 쓴다

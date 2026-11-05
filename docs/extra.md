@@ -27,7 +27,7 @@
 | 주요 흐름 | ① "오늘 뭐 입지?" → 선호·날씨·일정 기반 추천 ② "오늘/어제 추웠어" → 피드백 기록 + 선호(추위 민감도) 수정 ③ "이 옷 추가해줘" → 옷 추가 ④ "이 일정 추가해줘" → 캘린더 일정 추가 | — |
 | 기록과 피드백 | 추천하면서 **1번 코디를 그날 입은 옷으로 자동 기록**한다(이의가 없으면 기록). 다르게 입으면 그날 대화에서 고친다. **그날 옷에 대한 피드백은 그날 받는다**("오늘 추웠어"). "어제 추웠어"처럼 지난 날에 대한 말도 받는다 | — |
 | HITL 구현 | 하위 Agent의 `HumanInTheLoopMiddleware` | D2-A |
-| 기억 | 단기: `AsyncSqliteSaver`. 장기 기억은 Store 대신 `profile.json`과 `wear_log.json`이 맡는다. 대화 요약은 쓰지 않는다 | D5 |
+| 기억 | 단기: `AsyncSqliteSaver`(`logs/checkpoints.sqlite`). 장기 기억은 Store 대신 `profile.json`과 `wear_log.json`이 맡는다. 대화 요약은 쓰지 않는다 | D5 |
 | 응답 전달 | 노드 단위(`stream_mode="updates"`)로 진행을 보여주고, 최종 응답은 출력 가드레일을 거친 뒤 한 번에 출력한다. 추천은 Supervisor가 다시 쓰지 않고 `forward_message`로 원문을 넘긴다(§9.2) | D6 |
 | RAG | **착용 기록 검색 한 곳에만** 쓴다. 외부 문서 없이 `wear_log`·`calendar`·`clothes` JSON을 합쳐 문서로 만들고, 하이브리드(BM25 + 벡터) retriever를 도구(`search_wear_history`)로 감싼다(§8.3) | D3 |
 
@@ -65,6 +65,7 @@ ask() 뒷단(코드): output_guard → 추천 응답이면 recommendations.json 
 - **thread_id = `{user_id}:{YYYY-MM-DD}`**. 그날의 추천과 이후 대화("2번 입을게")가 같은 스레드로 이어져서, 후보 번호를 그대로 참조할 수 있다. 날짜가 바뀌면 스레드도 바뀐다.
 - 기본 사용자는 `user_id = "me"` 한 명이다.
 - **실행 설정 전달**: 도구는 MCP 서버 프로세스에서 돈다. stdio 클라이언트는 `env`를 주지 않으면 PATH 같은 일부 변수만 하위 프로세스에 넘기므로, `build_app(checkpointer, settings)`가 `WEATHER_MODE`, `WEATHER_FIXTURE`, `TODAY_OVERRIDE`(§6.2)를 `MultiServerMCPClient`의 서버별 `env`에 명시해 넘긴다. 비밀 값(AWS 키, `KMA_SERVICE_KEY`)은 넘기지 않고 서버가 `.env`를 직접 읽는다.
+  - 서버는 `sys.executable -m src.mcp_weather`처럼 모듈로 띄우고 `cwd`를 프로젝트 루트로 둔다(서버 안의 `from src.… import`가 동작하게).
   - 서버는 시작할 때 받은 값으로 고정된다. 설정이 바뀌면(`/date`, `run_eval`의 문항별 fixture) `build_app()`을 다시 불러 MCP 서버를 새로 띄운다. 체크포인터는 다시 만들지 않고 넘겨 쓴다.
   - `chat.py`·`run_eval.py` 프로세스도 같은 값을 `os.environ`에 둔다. 그래야 `ask()`의 추천 기록·자동 기록이 서버와 같은 "오늘"을 쓴다.
 
@@ -73,6 +74,7 @@ ask() 뒷단(코드): output_guard → 추천 응답이면 recommendations.json 
 ## 4. 파일 구성
 
 ```
+src/__init__.py      # 패키지 표시 (빈 파일)
 src/agent.py         # 메인 에이전트 그래프: 하위 Agent 4개 + Supervisor 조립 (build_app)
 src/tools.py         # 도메인 도구: MCP 서버에서 도구를 불러와 Agent별로 나눈다
 src/mcp_weather.py   # FastMCP 날씨 서버 (weather.py를 감싸는 얇은 래퍼)
@@ -126,9 +128,9 @@ SERVICE.md  README.md  requirements.txt  run.sh(선택)  Dockerfile(선택)
 ### 5.2 `data/wear_log.json`
 ```json
 [
-  {"date": "2026-11-03", "item_ids": ["c004", "c011", "c001", "c015"], "source": "auto",
+  {"date": "2026-11-04", "item_ids": ["c004", "c011", "c001", "c015"], "source": "auto",
    "weather": {"am_feels": 12.5, "day_feels": 17.0, "pm_feels": 13.0, "range": 6, "rain": false},
-   "feedback": [{"text": "저녁에 좀 추웠어", "direction": "cold", "at": "2026-11-03T21:10:00"}]}
+   "feedback": [{"text": "저녁에 좀 추웠어", "direction": "cold", "at": "2026-11-04T21:10:00"}]}
 ]
 ```
 - `source`: `auto`(추천할 때 코드가 그날 1번 후보로 자동 기록. 같은 날 다시 추천하면 새 1번으로 바꾼다) / `confirmed`(대화에서 `confirm_wear` 승인으로 기록) / `feedback_only`(착용 기록이 없는 날에 피드백만 받은 경우. `item_ids: []`, `weather: null`). 대화에서의 기록·수정은 `confirm_wear`(HITL 승인)로만 한다. `confirmed` 기록은 자동 기록이 덮어쓰지 않는다. 어느 쪽이 덮어쓰든 `feedback`은 유지한다.
@@ -145,14 +147,14 @@ SERVICE.md  README.md  requirements.txt  run.sh(선택)  Dockerfile(선택)
 
 ### 5.4 `data/calendar.json`
 ```json
-[{"date": "2026-11-05", "title": "저녁 데이트", "type": "date", "time": "19:00"}]
+[{"date": "2026-11-06", "title": "저녁 데이트", "type": "date", "time": "19:00"}]
 ```
 - `type`: `date` / `workout` / `formal` / `outdoor` / `etc`
 - 데모의 캘린더는 이 파일 하나다. `get_calendar`로 읽고 `add_event`로 추가한다.
 
 ### 5.5 `data/recommendations.json`
 ```json
-[{"date": "2026-11-03",
+[{"date": "2026-11-04",
   "candidates": [{"no": 1, "item_ids": ["c001", "c004", "c011", "c015"]}, {"no": 2, "item_ids": ["..."]}],
   "weather": {"am_feels": 12.5, "day_feels": 17.0, "pm_feels": 13.0, "range": 6, "rain": false}}]
 ```
@@ -266,7 +268,7 @@ docstring은 lecture.md §6.3 규칙(무엇/언제/언제 아님/인자)을 따�
 
 - **문서**: wear_log 항목 하나가 Document 하나다(id = 날짜). 본문은 코드가 wear_log·calendar·clothes를 합쳐 만든다. `feedback_only` 항목도 넣는다(입은 옷은 비워 둔다).
   ```
-  2026-11-03 · 비 없음 · 출근 체감 12.5℃, 낮 17℃ · 일정: 저녁 데이트
+  2026-11-04 · 비 없음 · 출근 체감 12.5℃, 낮 17℃ · 일정: 저녁 데이트
   입은 옷: 베이지 트렌치코트, 네이비 니트, 블랙 슬랙스, 브라운 첼시부츠
   피드백: 저녁에 좀 추웠어 (cold)
   ```
@@ -324,8 +326,8 @@ stylist_agent의 답은 Supervisor가 그대로 사용자에게 넘긴다(§9.2)
 - 후보의 격식은 top과 bottom의 formality 중 낮은 쪽으로 본다(순서 `casual` < `smart` < `formal`, `sport`는 `casual`과 같은 단계). "smart 이상"은 `smart`나 `formal`, "격식 룩"은 `formal`이다.
 - 일정이 있으면 그 일정에 맞춘 후보를 1번에 두고 이유에 일정을 언급한다(예: "저녁 7시 데이트가 있어서 셔츠와 슬랙스로").
 - 최근 입은 옷은 가능하면 피하고, 쓸 수밖에 없으면 이유에 밝힌다.
-- 비슷한 기온의 날에 "추웠다"는 피드백이 있으면 그날보다 한 단계 따뜻하게, "더웠다"면 한 단계 가볍게 고르고, 이유에 그날을 밝힌다(예: "10/28 체감 13℃에 베이지 트렌치코트로 추우셨어서 카키 필드재킷으로").
-- 오늘 `umbrella` 플래그나 일정(`date`/`formal`/`workout`)이 있으면 `search_wear_history`를 같은 조건(`rain="yes"`, `event_type`)으로 한 번 호출한다. 그날 기온 밖의 불편("신발이 젖었어")이 기록된 옷은 피하고, 이유에 그날을 밝힌다(예: "11/2 비 오는 날 화이트 스니커즈가 젖으셨어서 브라운 첼시부츠로"). 조건이 둘이면 한 번에 둘 다 넣는다.
+- 비슷한 기온의 날에 "추웠다"는 피드백이 있으면 그날보다 한 단계 따뜻하게, "더웠다"면 한 단계 가볍게 고르고, 이유에 그날을 밝힌다(예: "10/29 체감 13℃에 베이지 트렌치코트로 추우셨어서 카키 필드재킷으로").
+- 오늘 `umbrella` 플래그나 일정(`date`/`formal`/`workout`)이 있으면 `search_wear_history`를 같은 조건(`rain="yes"`, `event_type`)으로 한 번 호출한다. 그날 기온 밖의 불편("신발이 젖었어")이 기록된 옷은 피하고, 이유에 그날을 밝힌다(예: "11/3 비 오는 날 화이트 스니커즈가 젖으셨어서 브라운 첼시부츠로"). 조건이 둘이면 한 번에 둘 다 넣는다.
 
 ### 9.2 Supervisor
 - `create_supervisor([stylist_agent, closet_agent, log_agent, general_agent], model=..., prompt=..., tools=[create_forward_message_tool("supervisor")], output_mode="last_message")` 후 `compile(checkpointer=AsyncSqliteSaver)`.
@@ -424,7 +426,7 @@ REFUSAL_MESSAGES = {
 {
   "answer": "오늘은 흐리고 오후 3~6시에 비 …\n1) …\n챙길 것: 우산\n다르게 입거나 …",
   "contexts": [
-    {"kind": "tool", "agent": "stylist_agent", "tool": "get_today_weather", "content": "{\"date\": \"2026-11-04\", …}"},
+    {"kind": "tool", "agent": "stylist_agent", "tool": "get_today_weather", "content": "{\"date\": \"2026-11-05\", …}"},
     {"kind": "tool", "agent": "stylist_agent", "tool": "get_candidates", "content": "{…}"},
     {"kind": "retrieval", "agent": "stylist_agent", "tool": "search_wear_history", "content": "{…}"}
   ],
@@ -537,4 +539,5 @@ id,category,input,expected_traits,forbidden,expected_tools,note
 | 옷 추가에 HITL을 걸지 | 걸지 않는다. 저장한 값을 되보여주고 틀리면 수정 요청을 받는다 |
 | 가드레일 정책값(D8) | §11 기본값. LLM 검사 실패 시 fail-open |
 | 최근 착용 회피 기간 | 3일 |
+| 샘플 데이터의 기준 날짜 | 2026-11-05(목). 샘플 캘린더와 시드 기록이 이 날을 오늘로 보고 만들어졌다. 코드의 `today()`는 이 날짜를 박지 않고 `TODAY_OVERRIDE`가 없으면 시스템 날짜를 쓴다. 평가는 `TODAY_OVERRIDE=2026-11-05`로 고정하고, 시연에서 문서대로 보이려면 `/date 2026-11-05`를 쓴다 |
 | 착용 기록 검색의 하이브리드 가중치 | BM25 0.3 / 벡터 0.7. 평가 결과를 보고 조정 |

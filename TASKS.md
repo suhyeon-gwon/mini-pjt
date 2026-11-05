@@ -9,7 +9,7 @@
 ## 진행 표시 (전체 약 11시간)
 - 기초 파트. 더미 날씨로 전체 플로우 (10시간 35분)
   - 단계 0. 최소 경로 (3시간)
-    - [ ] 묶음 1. 설정과 기본 데이터 (35분)
+    - [x] 묶음 1. 설정과 기본 데이터 (35분)
     - [ ] 묶음 2. 날씨 fixture와 계산 (50분)
     - [ ] 묶음 3. 1차 필터와 MCP 서버 (45분)
     - [ ] 묶음 4. Agent에서 CLI까지 (50분)
@@ -46,12 +46,12 @@
 ### 묶음 1. 설정과 기본 데이터 (35분)
 
 #### 1-1. 골격과 `src/config.py` (10분)
-- 할 일: `src/`, `data/fixtures/`, `logs/` 폴더. `config.py`에 경로 상수(`__file__` 기준), `llm(temperature=...)` 팩토리(`ChatBedrockConverse`, sonnet-4-5, us-east-1), `get_text()`, `today()`(`TODAY_OVERRIDE`), `WEATHER_MODE`/`WEATHER_FIXTURE` 읽기, `.env` 로드
+- 할 일: `src/`(+빈 `src/__init__.py`), `data/fixtures/`, `logs/` 폴더(`.gitignore`에 `logs/`). `src/__init__.py`와 `.gitignore`는 준비 단계에서 끝냈다. `config.py`에 경로 상수(`__file__` 기준, 체크포인터 DB `logs/checkpoints.sqlite` 포함), `llm(temperature=...)` 팩토리(`ChatBedrockConverse`, sonnet-4-5, us-east-1), `get_text()`, `today()`(`TODAY_OVERRIDE`), `WEATHER_MODE`/`WEATHER_FIXTURE` 읽기, `.env` 로드
 - 확인: `python -c "from src.config import llm, get_text, today; print(today(), get_text(llm(0).invoke('ping')))"`가 오늘 날짜와 응답 텍스트를 찍는다
 
 #### 1-2. 기본 데이터 만들기 (25분)
 - 할 일: 아래 "부록 A·B" 초안대로 `data/clothes.json`(20벌), `data/calendar.json`, `data/profile.json`(extra.md §5.3 값), `data/wear_log.json`(`[]`), `data/recommendations.json`(`[]`)을 만든다. UTF-8, `ensure_ascii=False, indent=2`
-- 확인: `python -c`로 읽어 옷 15~20벌, 카테고리 5종 모두 있음, `laundry` 2벌, 방수 아우터·신발 각 1개 이상, `베이지 트렌치코트/네이비 니트/블랙 슬랙스/브라운 첼시부츠/회색 후드티(laundry)` 포함, `카멜 울 코트/카키 야상 점퍼` 없음, 2026-11-04에 일정 없음을 출력해 본다
+- 확인: `python -c`로 읽어 옷 15~20벌, 카테고리 5종 모두 있음, `laundry` 2벌, 방수 아우터·신발 각 1개 이상, `베이지 트렌치코트/네이비 니트/블랙 슬랙스/브라운 첼시부츠/회색 후드티(laundry)` 포함, `카멜 울 코트/카키 야상 점퍼` 없음, 2026-11-05에 일정 없음을 출력해 본다
 
 ### 묶음 2. 날씨 fixture와 계산 (50분)
 
@@ -70,13 +70,13 @@
 - 확인: mild 요약을 넣으면 `회색 후드티`가 없고 top·bottom·outer가 각각 1개 이상이며, cold 요약을 넣으면 outer 후보가 warmth 4~5다
 
 #### 3-2. MCP 서버 2개 (최소 도구) (25분)
-- 할 일: `mcp_weather.py`에 `get_today_weather`, `mcp_wardrobe.py`에 `get_candidates`, `get_calendar`, `get_profile`. 얇은 래퍼, JSON 문자열 반환, docstring 규칙(무엇/언제/언제 아님/Args), Pydantic 인자. `get_calendar`의 `date`는 이 단계에선 `YYYY-MM-DD`와 "오늘"만 처리
-- 확인: lecture.md §6.7 방식(`stdio_client` + `ClientSession`)으로 LLM 없이 4개 도구를 호출해 JSON이 돌아오고, 잘못된 날짜 인자에는 다시 호출 방법을 담은 문자열이 온다
+- 할 일: `mcp_weather.py`에 `get_today_weather`, `mcp_wardrobe.py`에 `get_candidates`, `get_calendar`, `get_profile`. 얇은 래퍼, JSON 문자열 반환, docstring 규칙(무엇/언제/언제 아님/Args), Pydantic 인자. `get_calendar`의 `date`는 이 단계에선 `YYYY-MM-DD`와 "오늘"만 처리. 서버는 `sys.executable -m src.mcp_*`로, `cwd`=프로젝트 루트로 띄운다
+- 확인: lecture.md §6.7 방식(`stdio_client` + `ClientSession`, `StdioServerParameters(args=["-m", ...], cwd=루트)`)으로 LLM 없이 4개 도구를 호출해 JSON이 돌아오고, 잘못된 날짜 인자에는 다시 호출 방법을 담은 문자열이 온다
 
 ### 묶음 4. Agent에서 CLI까지 (50분)
 
 #### 4-1. `tools.py`, `stylist_agent`, Supervisor (35분)
-- 할 일: `tools.py`에 `MultiServerMCPClient`(서버별 `env`에 `WEATHER_MODE`/`WEATHER_FIXTURE`/`TODAY_OVERRIDE` 명시, `sys.executable`)와 Agent별 도구 나누기. `agent.py`에 `stylist_agent`(`create_agent`. extra.md §9.1 출력 형식, 일정별 격식 표, 운동 일정이면 "운동복", 오늘이 아닌 날은 도구 없이 안내하는 규칙을 처음부터 프롬프트에 넣는다), `create_supervisor([stylist_agent], tools=[create_forward_message_tool("supervisor")], output_mode="last_message")`, `AsyncSqliteSaver`, `build_app(checkpointer, settings)`, `recursion_limit=25`, thread_id `me:YYYY-MM-DD`
+- 할 일: `tools.py`에 `MultiServerMCPClient`(서버별 `env`에 `WEATHER_MODE`/`WEATHER_FIXTURE`/`TODAY_OVERRIDE` 명시, `sys.executable -m src.mcp_*`, `cwd`=프로젝트 루트)와 Agent별 도구 나누기. `agent.py`에 `stylist_agent`(`create_agent`. extra.md §9.1 출력 형식, 일정별 격식 표, 운동 일정이면 "운동복", 오늘이 아닌 날은 도구 없이 안내하는 규칙을 처음부터 프롬프트에 넣는다), `create_supervisor([stylist_agent], tools=[create_forward_message_tool("supervisor")], output_mode="last_message")`, `AsyncSqliteSaver`(`logs/checkpoints.sqlite`), `build_app(checkpointer, settings)`, `recursion_limit=25`, thread_id `me:YYYY-MM-DD`
 - 확인: `build_app()` 앱에 "오늘 뭐 입지?"를 보내면 최종 메시지가 stylist 원문과 글자 그대로 같고(`forward_message`), 날씨 한 줄·`1)`~`3)` 후보·`챙길 것:` 줄·마지막 안내 줄이 있으며 옷 이름이 모두 clothes.json `name`과 일치한다
 
 #### 4-2. `chat.py` 최소 버전 (15분)
@@ -93,7 +93,7 @@
 
 #### 5-1. `resolve_date` (상대 날짜) (10분)
 - 할 일: `config.py`에 "오늘/어제/내일/토요일/이번 주 토요일/다음 주 금요일/YYYY-MM-DD" 해석(기준은 `today()`), 해석 실패 시 None. `get_calendar`에 적용하고 결과에 해석한 날짜를 함께 돌려준다
-- 확인: `TODAY_OVERRIDE=2026-11-04`(수)에서 "토요일"→11-07, "다음 주 금요일"→11-13, "어제"→11-03이 나온다
+- 확인: `TODAY_OVERRIDE=2026-11-05`(목)에서 "토요일"→11-07, "다음 주 금요일"→11-13, "어제"→11-04가 나온다
 
 #### 5-2. 비슷한 기온의 날과 최근 착용 표시 (20분)
 - 할 일: `wardrobe.py`에 출근·낮 체감 ±2℃인 날 최근 순 3개(입은 옷 이름·피드백), `recently_worn: "N일 전"` 표시(제외 안 함), `get_candidates` 결과에 붙이기. 시연용 `wear_log.json` 시드 5일(부록 C)
@@ -186,7 +186,7 @@ extra.md §15대로 이 단계에서 가장 먼저 한다.
 ### 묶음 12. run_eval과 판정 (50분)
 
 #### 12-1. `run_eval.py` 뼈대와 사전 조건 (30분)
-- 할 일: CSV 로드(7컬럼 순서, 필수 컬럼 누락·category 오류는 "채점 제외"), 데이터 파일 백업·복원(try/finally), 문항별 `eval-{id}:{날짜}` thread, 설정이 같으면 앱 재사용·다르면 `build_app()` 재호출, `ask()` + `hitl` 값을 돌려주는 `decide`. `note` 사전 조건을 코드로 만든다: `calendar`(date/workout/formal/none, `+` 조합), `state` 값 10종(extra.md §13.1). 평가 날짜는 기본 일정이 없는 날로 고정
+- 할 일: CSV 로드(7컬럼 순서, 필수 컬럼 누락·category 오류는 "채점 제외"), 데이터 파일 백업·복원(try/finally), 문항별 `eval-{id}:{날짜}` thread, 설정이 같으면 앱 재사용·다르면 `build_app()` 재호출, `ask()` + `hitl` 값을 돌려주는 `decide`. `note` 사전 조건을 코드로 만든다: `calendar`(date/workout/formal/none, `+` 조합), `state` 값 10종(extra.md §13.1). 평가 날짜는 기본 일정이 없는 2026-11-05로 고정
 - 확인: 판정 없이 돌려 45건 응답이 모두 찍히고, `history` state가 §13.1 정의(30일 안 10건 이상, 비 온 날 2건, 젖은 신발 피드백 1건)를 만족하며, 끝난 뒤 `data/*.json`이 실행 전과 바이트 단위로 같다
 
 #### 12-2. 판정 (20분)
@@ -259,7 +259,7 @@ extra.md §15대로 이 단계에서 가장 먼저 한다.
 
 ## 부록 B. `data/calendar.json` 초안
 
-기본 상태에서 2026-11-04(오늘)는 일정 없음(평가 기본값 `calendar=none`). 2026-11-07(토)은 비워 둔다(평가 16번 "이번 주 토요일 데이트 추가"와 겹치지 않게).
+기본 상태에서 2026-11-05(오늘, 목)는 일정 없음(평가 기본값 `calendar=none`). 2026-11-07(토)은 비워 둔다(평가 16번 "이번 주 토요일 데이트 추가"와 겹치지 않게).
 
 | date | title | type | time |
 |---|---|---|---|
@@ -270,4 +270,4 @@ extra.md §15대로 이 단계에서 가장 먼저 한다.
 
 ## 부록 C. `data/wear_log.json` 시드 초안 (5-2에서 추가)
 
-단계 0에서는 `[]`로 둔다. 5-2에서 2026-10-28 ~ 2026-11-03 사이 5일을 넣는다: 체감 12~13℃에 베이지 트렌치코트를 입고 "저녁에 좀 추웠어"(cold) 1일, 비 온 날 화이트 스니커즈에 "신발이 젖었어" 1일, 2026-11-03(어제) 기록 1일, 나머지는 피드백 없음 또는 ok. 평가용 state 데이터는 12-1에서 코드가 따로 만든다.
+단계 0에서는 `[]`로 둔다. 5-2에서 2026-10-29 ~ 2026-11-04 사이 5일을 넣는다: 체감 12~13℃에 베이지 트렌치코트를 입고 "저녁에 좀 추웠어"(cold) 1일, 비 온 날 화이트 스니커즈에 "신발이 젖었어" 1일, 2026-11-04(어제) 기록 1일, 나머지는 피드백 없음 또는 ok. 평가용 state 데이터는 12-1에서 코드가 따로 만든다.
