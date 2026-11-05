@@ -4,10 +4,14 @@ import copy
 import json
 import os
 import re
-from datetime import date, timedelta
+import urllib.error
+import urllib.request
+from datetime import date, datetime, time, timedelta
 from statistics import mean
+from urllib.parse import urlencode
 
 from src.config import FIXTURE_DIR, WEATHER_FIXTURES, WEATHER_MODES, today, weather_fixture, weather_mode
+from src.wardrobe import load_profile
 
 CATEGORIES = ("TMP", "POP", "PTY", "PCP", "WSD", "SKY", "REH")
 HOURS = range(6, 23)  # 06~22시
@@ -41,21 +45,74 @@ UMBRELLA_POP = 60   # 이 강수확률 이상이면 비 오는 시간
 LAYER_RANGE = 10    # 일교차가 이 이상이면 벗기 쉬운 겉옷
 WINDY_WSD = 7.0     # 최대 풍속(m/s)이 이 이상이면 바람막이
 
+KMA_URL = "https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst"  # 기상청 API허브
+KMA_TIMEOUT = 10                 # 초
+LIVE_BASE_HOURS = (5, 2)         # 오늘 06시부터 담은 발표(늦은 순). 그 전은 전날 23시
+RELEASE_DELAY = timedelta(minutes=10)  # 발표 뒤 조회할 수 있기까지
+
 FAIL_PREFIX = "날씨 조회 실패: "
 NO_GUESS = "날씨를 추정해 추천하지 말고 사용자에게 조회 실패를 알리세요."
 
 
 def fetch_raw() -> dict | str:
-    """오늘 예보의 기상청 응답 원문을 가져온다. 실패하면 안내 문자열을 돌려준다.
+    """오늘 예보의 기상청 응답 원문을 가져온다. 실패하면 안내 문자열을 돌려준다(어느 경로에서도 fixture로 대체하지 않는다).
 
-    fixture 모드는 data/fixtures 파일을 읽고, live 모드는 아직 연결되지 않아 실패 안내를 돌려준다.
+    fixture 모드는 data/fixtures 파일을 읽고, live 모드는 기상청 단기예보 API를 부른다.
     """
     mode = weather_mode()
     if mode == "fixture":
         return _read_fixture(weather_fixture())
     if mode == "live":
-        return FAIL_PREFIX + "기상청 실API가 아직 연결되지 않았습니다. WEATHER_MODE=fixture로 실행하세요."
+        return _fetch_live()
     return FAIL_PREFIX + f"WEATHER_MODE 값 {mode!r}은(는) 지원하지 않습니다. {'/'.join(WEATHER_MODES)} 중 하나로 지정하세요."
+
+
+def base_datetime(now: datetime) -> datetime:
+    """조회할 발표 시각. 오늘 06~22시를 모두 담은 발표 중 조회할 수 있는(발표 10분 뒤) 가장 최근 것이다.
+
+    발표는 그 시각 이후 예보만 담으므로(08시 발표는 09시부터) 05시 발표보다 늦은 것은 출근 시간대가 빠진다.
+    05:10 이후는 오늘 05시, 02:10~05:10은 오늘 02시, 그 전은 전날 23시 발표다.
+    """
+    for hour in LIVE_BASE_HOURS:
+        base = datetime.combine(now.date(), time(hour))
+        if now >= base + RELEASE_DELAY:
+            return base
+    return datetime.combine(now.date() - timedelta(days=1), time(23))
+
+
+def _fetch_live() -> dict | str:
+    """기상청 API허브의 단기예보조회(getVilageFcst)를 urllib.request로 부른다. 키는 .env의 KMA_SERVICE_KEY(API허브 인증키)."""
+    key = os.environ.get("KMA_SERVICE_KEY", "").strip()
+    if not key:
+        return FAIL_PREFIX + f"KMA_SERVICE_KEY가 .env에 없어 기상청 예보를 받을 수 없습니다. {NO_GUESS}"
+    now = datetime.now()
+    if today() != now.date():
+        return FAIL_PREFIX + (f"live 모드는 실제 오늘({now.date()}) 예보만 받을 수 있는데 오늘 날짜가 {today()}로 바뀌어 있습니다. "
+                              f"/date로 시스템 날짜로 되돌리거나 WEATHER_MODE=fixture로 실행하세요. {NO_GUESS}")
+    profile = load_profile()
+    nx, ny = REGION_GRID.get(profile.get("region"), (profile.get("nx"), profile.get("ny")))
+    if nx is None or ny is None:
+        return FAIL_PREFIX + f"프로필 지역({profile.get('region')})의 예보 격자를 알 수 없습니다. 지역을 다시 설정하세요. {NO_GUESS}"
+    base = base_datetime(now)
+    params = urlencode({"pageNo": 1, "numOfRows": 1000, "dataType": "JSON", "base_date": base.strftime("%Y%m%d"),
+                        "base_time": base.strftime("%H00"), "nx": nx, "ny": ny, "authKey": key})
+    try:
+        with urllib.request.urlopen(f"{KMA_URL}?{params}", timeout=KMA_TIMEOUT) as resp:
+            body = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as e:  # API허브는 키 오류·미신청을 {"result": {"message": …}}로 알린다
+        try:
+            reason = json.loads(e.read().decode("utf-8"))["result"]["message"]
+        except (ValueError, KeyError, TypeError, OSError):
+            reason = ""
+        return FAIL_PREFIX + f"기상청 서버 오류(HTTP {e.code}{', ' + reason if reason else ''}, 키 앞 4자리 {key[:4]}). {NO_GUESS}"
+    except OSError as e:  # 연결 실패, 10초 타임아웃
+        return FAIL_PREFIX + f"기상청에 연결하지 못했습니다({type(e).__name__}). {NO_GUESS}"
+    try:
+        return json.loads(body)  # resultCode 확인은 parse_hourly가 한다
+    except json.JSONDecodeError:  # 키 오류 등은 dataType과 상관없이 XML로 온다
+        m = re.search(r"<returnAuthMsg>(.*?)</returnAuthMsg>|<errMsg>(.*?)</errMsg>", body)
+        reason = next((g for g in m.groups() if g), "") if m else "알 수 없는 응답 형식"
+        return FAIL_PREFIX + f"기상청 응답 오류({reason}, 키 앞 4자리 {key[:4]}). {NO_GUESS}"
 
 
 def _read_fixture(name: str) -> dict | str:

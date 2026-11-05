@@ -167,9 +167,10 @@ SERVICE.md  README.md  requirements.txt  run.sh(선택)  Dockerfile(선택)
 ## 6. 날씨 처리 (코드)
 
 ### 6.1 기상청 단기예보
-- 엔드포인트: `http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst`
-- 파라미터: `serviceKey`, `pageNo=1`, `numOfRows=1000`, `dataType=JSON`, `base_date`, `base_time`, `nx`, `ny`
-- `base_time`은 02, 05, 08, 11, 14, 17, 20, 23시 정각 발표이며 약 10분 뒤에 조회할 수 있다. 현재 시각 기준으로 **조회 가능한 가장 최근 발표**를 고른다(자정~02:10이면 전날 23시).
+- 엔드포인트: 기상청 API허브 `https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst`(단기예보 조회서비스의 단기예보조회. API허브에서 이 API를 따로 활용신청해야 한다). 지점 하나(nx, ny)의 모든 항목·시각을 한 번에 받는다. 같은 API허브의 격자자료(`typ01/cgi-bin/url/nph-dfs_shrt_grd`)는 변수·시각마다 전국 격자를 받아 하루 06~22시 7개 항목에 약 119번 호출해야 하므로 쓰지 않는다
+- 파라미터: `authKey`, `pageNo=1`, `numOfRows=1000`, `dataType=JSON`, `base_date`, `base_time`, `nx`, `ny`
+- `base_time`은 02, 05, 08, 11, 14, 17, 20, 23시 정각 발표이며 약 10분 뒤에 조회할 수 있다. 발표는 그 시각 이후 예보만 담으므로(08시 발표는 09시부터) 오늘 06~22시를 모두 담은 발표 중 **조회 가능한 가장 최근 것**을 고른다: 05:10 이후는 오늘 05시, 02:10~05:10은 오늘 02시, 자정~02:10은 전날 23시. 그보다 늦은 발표를 쓰면 출근 시간대가 빠져 구간 요약을 만들 수 없다.
+- 인증키는 `.env`의 `KMA_SERVICE_KEY`(API허브 인증키)다. 키 없음, HTTP 오류(틀린 키 401 "유효한 인증키가 아닙니다", 미신청 403 "활용신청이 필요한 API"), 연결 실패·10초 타임아웃, JSON이 아닌 오류 응답은 모두 "날씨 조회 실패: …" 안내로 돌려준다. HTTP 오류는 API허브가 보낸 사유(`result.message`)를 안내에 붙인다. 로그·안내에는 키 앞 4자리만 쓴다.
 - 사용하는 항목: `TMP`(기온), `POP`(강수확률), `PTY`(강수형태), `PCP`(1시간 강수량), `WSD`(풍속 m/s), `SKY`(하늘상태), `REH`(습도)
 - 최저/최고 기온은 `TMN`/`TMX` 대신 **오늘 06~22시 `TMP`의 최솟값/최댓값**으로 계산한다(발표 시각에 따라 TMN이 빠지는 문제를 피한다).
 - HTTP 호출은 표준 라이브러리 `urllib.request`로 한다(requirements.txt에 HTTP 클라이언트가 없다). 타임아웃은 10초다.

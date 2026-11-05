@@ -106,23 +106,5 @@
       "rain": false
     },
     "feedback": []
-  },
-  {
-    "date": "2026-11-05",
-    "item_ids": [
-      "c006",
-      "c013",
-      "c001",
-      "c017"
-    ],
-    "source": "auto",
-    "weather": {
-      "am_feels": 13.0,
-      "day_feels": 17.0,
-      "pm_feels": 14.0,
-      "range": 6.0,
-      "rain": true
-    },
-    "feedback": []
   }
 ]
