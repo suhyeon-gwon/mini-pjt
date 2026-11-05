@@ -12,6 +12,7 @@ with contextlib.redirect_stderr(io.StringIO()):  # fastmcp가 불러오는 authl
 
 from src import feedback
 from src.config import resolve_date, today
+from src import wardrobe
 from src.wardrobe import (
     events_on, filter_candidates, load_clothes, load_profile, load_wear_log, recent_wear, recommendation_on,
     weather_record, write_wear,
@@ -165,7 +166,12 @@ def confirm_wear(
             summary = today_weather()
             weather = weather_record(summary) if isinstance(summary, dict) else None
         write_wear(day.isoformat(), item_ids, "confirmed", weather)
-        return _dump({"date": day.isoformat(), "recorded_items": [by_id[i]["name"] for i in item_ids], "source": "confirmed"})
+        return _dump({
+            "date": day.isoformat(),
+            "recorded_items": [by_id[i]["name"] for i in item_ids],
+            "source": "confirmed",
+            "안내": "실제로 기록된 옷은 recorded_items다. 사용자에게 이 목록 그대로 안내한다.",
+        })
     except Exception as e:
         return _error(e)
 
@@ -213,7 +219,111 @@ def update_profile(
     """
     try:
         result = feedback.change_profile(field, value)
+        if isinstance(result, str):
+            return result
+        return _dump({**result, "안내": "실제로 반영된 값은 to다. 사용자에게 이 값 그대로 안내한다."})
+    except Exception as e:
+        return _error(e)
+
+
+@mcp.tool()
+def list_clothes(
+    category: Annotated[Literal["", "top", "bottom", "outer", "shoes", "accessory"], Field(description="빈 값이면 전체")] = "",
+    status: Annotated[Literal["", "available", "laundry"], Field(description="available=입을 수 있음, laundry=세탁 중. 빈 값이면 전체")] = "",
+) -> str:
+    """옷장의 옷 목록(id, 이름, 종류, 두께, 색, 격식, 방수, 세탁 상태)을 조회한다.
+
+    "내 아우터 뭐 있어?"처럼 옷장을 볼 때, 특정 옷("빨간 패딩")이 옷장에 있는지·세탁 중인지 확인할 때,
+    옷 이름으로 id를 찾을 때(update_status, confirm_wear 전에) 쓴다.
+    오늘 날씨에 맞는 후보를 고를 때는 쓰지 않는다(get_candidates).
+
+    Args:
+        category: top / bottom / outer / shoes / accessory. 빈 값이면 전체.
+        status: available / laundry. 빈 값이면 전체.
+    """
+    try:
+        rows = wardrobe.list_clothes(category, status)
+        return _dump({"count": len(rows), "clothes": rows})
+    except Exception as e:
+        return _error(e)
+
+
+@mcp.tool()
+def add_clothing(
+    name: Annotated[str, Field(description='"색 + 종류" 형식 이름 (예: "카멜 울 코트")', min_length=2, max_length=30)],
+    category: Annotated[Literal["top", "bottom", "outer", "shoes", "accessory"], Field(description="옷 종류")],
+    warmth: Annotated[int, Field(description="두께·보온 1(아주 얇음)~5(아주 따뜻함)", ge=1, le=5)],
+    color: Annotated[str, Field(description="영문 소문자 색 이름 하나 (예: camel, navy)", pattern=r"^[a-z]+$")],
+    formality: Annotated[Literal["casual", "smart", "formal", "sport"], Field(description="격식")],
+    waterproof: Annotated[bool, Field(description="방수 여부")] = False,
+) -> str:
+    """옷장에 새 옷을 바로 추가하고, 저장한 값(발급한 id 포함)을 그대로 돌려준다.
+
+    "카멜 울 코트 추가해줘"처럼 옷을 새로 등록할 때 쓴다. 종류·두께·색·격식·방수는 이름에서 추정해 채운다.
+    같은 이름이 이미 있으면 추가하지 않고 안내한다. 세탁 상태를 바꿀 때는 쓰지 않는다(update_status).
+
+    Args:
+        name: "색 + 종류" 이름.
+        category: top / bottom / outer / shoes / accessory.
+        warmth: 1~5.
+        color: 영문 소문자 색 이름.
+        formality: casual / smart / formal / sport.
+        waterproof: 방수면 true.
+    """
+    try:
+        item = {"name": name.strip(), "category": category, "warmth": warmth, "color": color,
+                "formality": formality, "waterproof": waterproof}
+        result = wardrobe.add_clothing(item)
+        return result if isinstance(result, str) else _dump({"saved": result})
+    except Exception as e:
+        return _error(e)
+
+
+@mcp.tool()
+def update_status(
+    item_id: Annotated[str, Field(description="옷 id (예: c006)", max_length=30)],
+    status: Annotated[Literal["available", "laundry"], Field(description="available=입을 수 있음, laundry=세탁 중")],
+) -> str:
+    """옷의 세탁 상태를 바로 바꾸고 바뀐 값을 돌려준다.
+
+    "네이비 니트 세탁 넣었어", "회색 후드티 빨래 끝났어"처럼 세탁 상태가 바뀔 때 쓴다. id를 모르면 먼저 list_clothes로 찾는다.
+    옷을 새로 추가할 때는 쓰지 않는다(add_clothing).
+
+    Args:
+        item_id: 옷 id.
+        status: available / laundry.
+    """
+    try:
+        result = wardrobe.set_status(item_id.strip(), status)
         return result if isinstance(result, str) else _dump(result)
+    except Exception as e:
+        return _error(e)
+
+
+@mcp.tool()
+def add_event(
+    date: Annotated[str, Field(description=DATE_HELP, max_length=20)],
+    title: Annotated[str, Field(description="일정 제목 (예: 저녁 데이트)", min_length=1, max_length=40)],
+    type: Annotated[Literal["date", "workout", "formal", "outdoor", "etc"], Field(description="데이트/운동/격식 자리/야외 활동/그 밖")],
+    time: Annotated[str, Field(description="24시간 HH:MM (예: 19:00). 모르면 빈 값", pattern=r"^$|^([01]\d|2[0-3]):[0-5]\d$")] = "",
+) -> str:
+    """내 캘린더에 일정을 바로 추가하고, 저장한 날짜(코드가 해석한 날짜)·시간·종류를 돌려준다.
+
+    "토요일 저녁 7시 데이트 일정 추가해줘"처럼 일정을 등록할 때 쓴다. 제목이나 날짜가 불분명하면 호출하지 말고 되묻는다.
+    일정을 조회할 때는 쓰지 않는다(get_calendar).
+
+    Args:
+        date: 사용자가 말한 날짜 표현 그대로("토요일", "이번 주 토요일", "11월 7일") 또는 YYYY-MM-DD.
+        title: 일정 제목.
+        type: date / workout / formal / outdoor / etc.
+        time: HH:MM 또는 빈 값.
+    """
+    day = resolve_date(date)
+    if day is None:
+        return _bad_date(date)
+    try:
+        saved = wardrobe.add_event({"date": day.isoformat(), "title": title.strip(), "type": type, "time": time})
+        return _dump({"saved": saved})
     except Exception as e:
         return _error(e)
 

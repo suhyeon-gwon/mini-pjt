@@ -1,5 +1,6 @@
 """옷장 저장소(JSON)와 날씨 기준 1차 필터."""
 
+import difflib
 import json
 import os
 import tempfile
@@ -54,6 +55,54 @@ def load_clothes() -> list[dict]:
 def load_profile() -> dict:
     """사용자 프로필(지역, 추위 민감도, 선호 스타일 등)."""
     return read_json(PROFILE_PATH)
+
+
+def list_clothes(category: str = "", status: str = "") -> list[dict]:
+    """옷 목록. category·status가 빈 값이면 거르지 않는다."""
+    return [c for c in load_clothes() if (not category or c["category"] == category) and (not status or c["status"] == status)]
+
+
+def similar_names(text: str, clothes: list[dict], n: int = 3) -> list[str]:
+    """text와 비슷한 옷을 "id 이름" 문자열로 최대 n개 찾는다(이름 유사도, 겹치는 단어 순)."""
+    names = {c["name"]: c["id"] for c in clothes}
+    close = difflib.get_close_matches(text, list(names), n=n, cutoff=0.3)
+    words = set(text.split())
+    close += [name for name in names if name not in close and words & set(name.split())]
+    return [f"{names[name]} {name}" for name in close[:n]]
+
+
+def add_clothing(item: dict) -> dict | str:
+    """옷을 옷장에 추가하고 저장한 값(발급한 id 포함)을 돌려준다. 같은 이름이 있으면 바꾸지 않고 안내 문자열."""
+    clothes = load_clothes()
+    same = next((c for c in clothes if c["name"] == item["name"]), None)
+    if same:
+        return f"이미 옷장에 '{item['name']}'({same['id']}, {same['status']})이 있어 추가하지 않았습니다. 다른 이름이면 이름을 바꿔 다시 요청하세요."
+    next_no = max((int(c["id"][1:]) for c in clothes if c["id"][1:].isdigit()), default=0) + 1
+    saved = {"id": f"c{next_no:03d}", **item, "status": "available"}
+    clothes.append(saved)
+    write_json(CLOTHES_PATH, clothes)
+    return saved
+
+
+def set_status(item_id: str, status: str) -> dict | str:
+    """옷의 세탁 상태를 바꾸고 바뀐 옷 정보를 돌려준다. 없는 id면 비슷한 옷 후보를 담은 안내 문자열."""
+    clothes = load_clothes()
+    item = next((c for c in clothes if c["id"] == item_id), None)
+    if item is None:
+        hint = similar_names(item_id, clothes)
+        return f"id '{item_id}'인 옷이 없습니다. 비슷한 옷: {', '.join(hint) if hint else '없음'}. 맞는 id로 다시 호출하세요."
+    old, item["status"] = item["status"], status
+    write_json(CLOTHES_PATH, clothes)
+    return {"id": item_id, "name": item["name"], "from": old, "to": status}
+
+
+def add_event(event: dict) -> dict:
+    """캘린더에 일정을 추가하고(날짜·시간순 정렬) 저장한 일정을 돌려준다."""
+    events = read_json(CALENDAR_PATH)
+    events.append(event)
+    events.sort(key=lambda e: (e["date"], e.get("time", "")))
+    write_json(CALENDAR_PATH, events)
+    return event
 
 
 def load_wear_log() -> list[dict]:

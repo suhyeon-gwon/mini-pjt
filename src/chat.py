@@ -10,9 +10,9 @@ from langgraph.types import Command
 from langgraph_supervisor.handoff import METADATA_KEY_IS_HANDOFF_BACK
 
 from src.agent import build_app, thread_config
-from src.config import CHECKPOINT_PATH, get_text, run_settings, today
+from src.config import CHECKPOINT_PATH, get_text, resolve_date, run_settings, today
 from src.guardrails import outfit_lines, output_guard
-from src.wardrobe import save_recommendation, weather_record, write_wear
+from src.wardrobe import CATEGORIES, load_clothes, load_profile, save_recommendation, weather_record, write_wear
 from src.weather import today_weather
 
 MAX_RESUMES = 5  # 한 턴에서 HITL 승인 요청에 답하며 재개하는 횟수 상한
@@ -24,13 +24,104 @@ def reject_all(request: dict) -> dict:
                           for _ in request["action_requests"]]}
 
 
+PROFILE_LABELS = {"cold_sensitivity": "추위 기준", "preferred_styles": "선호 스타일", "region": "지역"}
+
+
+def _signed(n: int) -> str:
+    """추위 민감도 표기: 0, +1, -1."""
+    return f"{n:+d}" if n else "0"
+
+
+def _to_int(value):
+    """정수나 정수 모양 문자열이면 int, 아니면 None."""
+    try:
+        return int(str(value).strip())
+    except ValueError:
+        return None
+
+
+def _question(action: dict) -> str:
+    """HITL 요청 하나를 사용자에게 보여 줄 질문 문장으로 만든다(옷 id는 이름으로 바꾼다)."""
+    name, args = action["name"], action["args"]
+    if name == "confirm_wear":
+        by_id = {c["id"]: c["name"] for c in load_clothes()}
+        day = resolve_date(args.get("date", ""))
+        items = "\n".join(f"    - {by_id.get(i, f'(옷장에 없는 id {i})')}" for i in args.get("item_ids", []))
+        return f"{day or args.get('date')}에 입은 옷을 아래처럼 기록할까요?\n{items}"
+    if name == "update_profile":
+        field, value, profile = args.get("field"), args.get("value"), load_profile()
+        current = profile.get(field)
+        if field == "cold_sensitivity" and _to_int(value) is not None:
+            new = _to_int(value)
+            way = "따뜻하게" if new > current else "가볍게"
+            return f"추위 기준을 한 단계 {way} 바꿀까요? ({_signed(current)} → {_signed(new)})"
+        return f"{PROFILE_LABELS.get(field, field)}을(를) 바꿀까요? ({current} → {value})"
+    return f"{name}을(를) 실행할까요? {json.dumps(args, ensure_ascii=False)}"
+
+
+def _choose(prompt: str, allowed: str) -> str:
+    """allowed 글자 중 하나를 입력받을 때까지 묻는다."""
+    while True:
+        answer = input(prompt).strip().lower()
+        if answer in allowed:
+            return answer
+        print(f"  {', '.join(allowed)} 중 하나를 입력하세요.")
+
+
+def _edit_wear(args: dict) -> dict:
+    """착용 기록 수정: 옷장 목록(id 이름)을 보여 주고 옷마다 바꿀 id를 받아 새 인자를 만든다."""
+    clothes = load_clothes()
+    by_id = {c["id"]: c for c in clothes}
+    print("  옷장:")
+    for cat in CATEGORIES:
+        print(f"    [{cat}] " + ", ".join(f"{c['id']} {c['name']}" for c in clothes if c["category"] == cat))
+    item_ids = []
+    for item_id in args.get("item_ids", []):
+        name = by_id[item_id]["name"] if item_id in by_id else item_id
+        answer = input(f"  {name} → 바꿀 id (엔터=그대로, -=빼기) > ").strip()
+        if answer == "-":
+            continue
+        if answer and answer not in by_id:
+            print(f"  '{answer}'은(는) 없는 id라 그대로 둡니다.")
+            answer = ""
+        item_ids.append(answer or item_id)
+    extra = input("  더 입은 옷 id (쉼표로 구분, 엔터=없음) > ").strip()
+    item_ids += [i.strip() for i in extra.split(",") if i.strip() in by_id]
+    return {**args, "item_ids": item_ids or args.get("item_ids", [])}
+
+
+def _edit_profile(args: dict) -> dict:
+    """프로필 변경 수정(선호 스타일·지역): 바꿀 값을 직접 받는다(검증은 도구가 한다)."""
+    field = args.get("field")
+    if field == "preferred_styles":
+        value = [s.strip() for s in input("  선호 스타일 (쉼표로 구분) > ").split(",") if s.strip()]
+    else:
+        value = input(f"  새 {PROFILE_LABELS.get(field, field)} > ").strip()
+    return {**args, "value": value}
+
+
+def _choices(action: dict) -> str:
+    """요청별로 고를 수 있는 결정. 추위 민감도는 한 단계씩만 바뀌어 고칠 값이 없으므로 승인·거절만 받는다."""
+    if action["name"] == "update_profile" and action["args"].get("field") == "cold_sensitivity":
+        return "ar"
+    return "aer"
+
+
 def cli_decide(request: dict) -> dict:
-    """HITL 승인 요청을 CLI에서 묻고 재개 값({"decisions": [...]})을 만든다."""
+    """HITL 승인 요청을 CLI에서 [a]승인 / [e]수정 / [r]거절로 묻고 재개 값({"decisions": [...]})을 만든다."""
+    labels = {"a": "[a]승인", "e": "[e]수정", "r": "[r]거절"}
     decisions = []
     for action in request["action_requests"]:
-        print(f"\n  [확인 필요] {action['name']} {json.dumps(action['args'], ensure_ascii=False)}")
-        answer = input("  [a]승인 / [r]거절 > ").strip().lower()
-        decisions.append({"type": "approve"} if answer == "a" else {"type": "reject", "message": "사용자가 거절했습니다."})
+        print(f"\n  [확인] {_question(action)}")
+        allowed = _choices(action)
+        answer = _choose(f"  {' / '.join(labels[c] for c in allowed)} > ", allowed)
+        if answer == "a":
+            decisions.append({"type": "approve"})
+        elif answer == "r":
+            decisions.append({"type": "reject", "message": "사용자가 거절했습니다. 바꾸지 않았다고 안내하세요."})
+        else:
+            edit = _edit_wear if action["name"] == "confirm_wear" else _edit_profile
+            decisions.append({"type": "edit", "edited_action": {"name": action["name"], "args": edit(action["args"])}})
     return {"decisions": decisions}
 
 
