@@ -9,7 +9,6 @@ from datetime import date, timedelta
 from src.config import CALENDAR_PATH, CLOTHES_PATH, PROFILE_PATH, RECOMMENDATIONS_PATH, WEAR_LOG_PATH
 
 CATEGORIES = ("top", "bottom", "outer", "shoes", "accessory")
-CATEGORY_NAMES = {"top": "상의", "bottom": "하의", "outer": "아우터", "shoes": "신발", "accessory": "액세서리"}
 SIMILAR_FEELS = 2.0  # 비슷한 기온의 날: 출근·낮 체감온도 차이가 각각 이 이내
 SIMILAR_LIMIT = 3
 
@@ -240,36 +239,13 @@ def recently_worn(wear_log: list[dict], today_iso: str, days: int) -> dict[str, 
     return worn
 
 
-def feedback_refs(similar: list[dict], clothes: list[dict]) -> dict[str, tuple[str, str, int]]:
-    """비슷한 기온의 날 중 추웠다·더웠다 피드백이 있는 가장 최근 날에 입은 top·outer의 warmth.
-
-    반환: category → (방향 cold|hot, 날짜, warmth). 그런 날이 없으면 빈 사전.
-    """
-    by_name = {c["name"]: c for c in clothes}
-    for d in similar:  # 최근 순
-        directions = {f["direction"] for f in d["feedback"]} & {"cold", "hot"}
-        if len(directions) == 1:
-            direction = directions.pop()
-            worn = [by_name[n] for n in d["items"] if n in by_name]
-            return {c["category"]: (direction, d["date"], c["warmth"]) for c in worn if c["category"] in ("top", "outer")}
-    return {}
-
-
-def _item_view(item: dict, umbrella: bool, worn: dict[str, int], refs: dict[str, tuple[str, str, int]]) -> dict:
-    """후보로 내보낼 옷 정보. 비 오는 날 방수 아우터·신발에는 rain_ok, 최근 입은 옷에는 recently_worn,
-    비슷한 기온의 날에 추웠으면 그날 같은 종류보다 따뜻한 옷에(더웠으면 가벼운 옷에) feedback_fit을 붙인다."""
+def _item_view(item: dict, umbrella: bool, worn: dict[str, int]) -> dict:
+    """후보로 내보낼 옷 정보. 비 오는 날 방수 아우터·신발에는 rain_ok, 최근 입은 옷에는 recently_worn을 붙인다."""
     view = {k: item[k] for k in ("id", "name", "warmth", "color", "formality", "waterproof")}
     if umbrella and item["waterproof"] and item["category"] in ("outer", "shoes"):
         view["rain_ok"] = True
     if item["id"] in worn:
         view["recently_worn"] = f"{worn[item['id']]}일 전"
-    ref = refs.get(item["category"])
-    if ref:
-        direction, day, warmth = ref
-        if direction == "cold" and item["warmth"] > warmth:
-            view["feedback_fit"] = f"{day} 추웠던 날 입은 {CATEGORY_NAMES[item['category']]}보다 따뜻함"
-        elif direction == "hot" and item["warmth"] < warmth:
-            view["feedback_fit"] = f"{day} 더웠던 날 입은 {CATEGORY_NAMES[item['category']]}보다 가벼움"
     return view
 
 
@@ -288,8 +264,6 @@ def filter_candidates(weather: dict, profile: dict, clothes: list[dict], wear_lo
     base = {"top": day, "bottom": (am + day) / 2, "outer": am}
     flags = weather["flags"]
     available = [c for c in clothes if c["status"] == "available"]
-    similar = similar_days(weather, wear_log, clothes)
-    refs = feedback_refs(similar, clothes)
 
     result = {}
     for cat in CATEGORIES:
@@ -312,14 +286,13 @@ def filter_candidates(weather: dict, profile: dict, clothes: list[dict], wear_lo
                     wide = (max(1, rng[0] - step), min(5, rng[1] + step))
                     picked = [c for c in pool if wide[0] <= c["warmth"] <= wide[1]]
                     if picked:
-                        note = (f"오늘 날씨에 딱 맞는 {CATEGORY_NAMES[cat]}(warmth {rng[0]}~{rng[1]})가 옷장에 없어 "
-                                f"{wide[0]}~{wide[1]}로 넓혔습니다. 1번 이유에 이를 밝히고 겹쳐 입기를 안내하세요")
+                        note = f"warmth {rng[0]}~{rng[1]}에 맞는 옷이 없어 {wide[0]}~{wide[1]}로 넓혔습니다"
                         break
             entry["warmth"] = list(rng)
         else:
             picked = pool  # shoes·accessory는 warmth로 거르지 않는다
             note = ""
-        entry["items"] = [_item_view(c, flags.get("umbrella", False), worn, refs) for c in picked]
+        entry["items"] = [_item_view(c, flags.get("umbrella", False), worn) for c in picked]
         if note:
             entry["note"] = note
         result[cat] = entry
@@ -329,5 +302,5 @@ def filter_candidates(weather: dict, profile: dict, clothes: list[dict], wear_lo
         "cold_sensitivity": sensitivity,
         "flags": flags,
         "categories": result,
-        "similar_days": similar,
+        "similar_days": similar_days(weather, wear_log, clothes),
     }

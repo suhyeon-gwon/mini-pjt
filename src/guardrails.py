@@ -108,7 +108,7 @@ def output_guard(text: str) -> tuple[str, list[list[str]]]:
 
     코디 줄을 " + "로 나눠 조각마다 clothes.json의 name과 정확히 일치하는지, 세탁 중이 아닌지 본다.
     걸린 후보는 이유 줄까지 통째로 빼고 남은 후보 번호를 1부터 다시 매기며, 뺀 사유는 감사 로그에 남긴다.
-    남은 후보가 없으면 no_outfit 문구로 바꾸고, 남으면 빈 줄 위치를 형식에 맞춘다. 코디 줄이 없는 응답(추천이 아닌 답)은 (원문, [])이고,
+    남은 후보가 없으면 no_outfit 문구로 바꾼다. 코디 줄이 없는 응답(추천이 아닌 답)은 (원문, [])이고,
     그 응답에 옷·날씨·일정과 무관한 단정적 의료·금융 조언이 있으면 off_topic 문구로 바꾼다.
     """
     lines = text.splitlines()
@@ -146,21 +146,4 @@ def output_guard(text: str) -> tuple[str, list[list[str]]]:
     if not kept:
         audit("output", "no_outfit", "남은 후보가 없어 no_outfit 문구로 교체")
         return REFUSAL_MESSAGES["no_outfit"], []
-    return "\n".join(_tidy_blank_lines(out)), kept
-
-
-def _tidy_blank_lines(lines: list[str]) -> list[str]:
-    """추천 형식의 빈 줄 규칙(extra.md §9.1)을 맞춘다: 첫 후보 앞과 '챙길 것:' 앞에만 빈 줄 한 줄.
-
-    후보 사이, '챙길 것:'과 마지막 안내 줄 사이의 빈 줄은 뺀다. 첫 후보 위(날씨 줄 등)는 그대로 둔다.
-    """
-    first = next(i for i, line in enumerate(lines) if OUTFIT_LINE.match(line))
-    head = lines[:first]
-    while head and not head[-1].strip():
-        head.pop()
-    body = [line for line in lines[first:] if line.strip()]
-    for i, line in enumerate(body):
-        if line.startswith("챙길 것:"):
-            body.insert(i, "")
-            break
-    return [*head, "", *body] if head else body
+    return "\n".join(out), kept

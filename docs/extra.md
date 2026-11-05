@@ -229,9 +229,8 @@ SERVICE.md  README.md  requirements.txt  run.sh(선택)  Dockerfile(선택)
 - `status = laundry`는 제외한다.
 - `umbrella`면 `waterproof` 아우터와 신발에 `rain_ok: true`를 표시한다(제외하지 않음).
 - 최근 `avoid_recent_days`일 안에 입은 옷에는 `recently_worn: "N일 전"`을 표시한다(**제외하지 않는다.** 피할지는 LLM이 판단한다).
-- top, bottom, outer 중 후보가 0개인 카테고리가 있으면 범위를 한 단계씩 넓혀 다시 찾고, 그래도 없으면 "해당 카테고리에 맞는 옷이 없습니다"를 결과에 넣는다. 넓혔으면 note에 "오늘 날씨에 딱 맞는 {종류}(warmth a~b)가 옷장에 없어 c~d로 넓혔습니다. 1번 이유에 이를 밝히고 겹쳐 입기를 안내하세요"를 넣는다(1차 평가 33번).
+- top, bottom, outer 중 후보가 0개인 카테고리가 있으면 범위를 한 단계씩 넓혀 다시 찾고, 그래도 없으면 "해당 카테고리에 맞는 옷이 없습니다"를 결과에 넣는다.
 - **비슷한 기온의 날**: wear_log에서 오늘과 출근·낮 체감온도가 각각 ±2℃ 안인 날을 최근 순으로 최대 3개 찾아, 그날 입은 옷과 피드백을 결과에 붙인다. 계절이 바뀌어 같은 기온을 오랜만에 맞는 환절기에 추천 근거가 된다.
-- 그중 추웠다(`cold`)·더웠다(`hot`) 피드백이 있는 가장 최근 날의 top·outer warmth와 비교해, 더 따뜻한(더웠으면 더 가벼운) 같은 종류 후보에 `feedback_fit: "{날짜} 추웠던 날 입은 아우터보다 따뜻함"`을 표시한다. "한 단계 따뜻하게"의 비교를 LLM이 하지 않게 한다(1차 평가에서 추웠던 날의 옷을 다시 고르며 그날을 근거로 댄 모순).
 
 ---
 
@@ -253,7 +252,7 @@ docstring은 lecture.md §6.3 규칙(무엇/언제/언제 아님/인자)을 따�
 | `list_clothes` | 조회 | `category: Literal["","top","bottom","outer","shoes","accessory"] = ""`, `status: Literal["","available","laundry"] = ""` | 빈 값이면 전체 |
 | `get_recent_wear` | 조회 | `days: int = 7` (1~30) | 날짜별 착용 옷 이름과 피드백 |
 | `get_calendar` | 조회 | `date: str = ""` | 내 캘린더에서 해당 날짜 일정을 가져온다(데모에서는 `calendar.json`). 일정이 없으면 빈 목록 |
-| `get_profile` | 조회 | — | 프로필과 함께 코드가 만든 `change_rules`(추위 민감도 -2~+2·한 번에 1단계·지금 바꿀 수 있는 값, 가능한 지역)를 돌려준다. 범위 밖 요청이면 `update_profile`을 부르지 않고 범위를 안내한다 |
+| `get_profile` | 조회 | — | |
 | `get_recommendation` | 조회 | `date: str` | 그날 추천 후보(번호별 옷 이름·id). "어제 2번 입었어"처럼 지난 추천을 번호로 말할 때 쓴다 |
 | `search_wear_history` | 조회 | `query: str`(자연어, 필수), `rain: Literal["","yes","no"] = ""`, `event_type: Literal["","date","workout","formal","outdoor","etc"] = ""`, `item_name: str = ""`, `direction: Literal["","cold","hot","ok"] = ""`, `k: int = 3`(1~5) | 상황(비 온 날, 데이트 날), 옷, 피드백 표현으로 지난 착용 기록을 찾는다(§8.3). 최근 N일을 날짜순으로 볼 때는 `get_recent_wear` |
 | `add_clothing` | 실행 | `name: str`, `category: Literal["top","bottom","outer","shoes","accessory"]`, `warmth: int`(1~5, `Field(ge=1, le=5)`), `color: str`(영문 소문자), `formality: Literal["casual","smart","formal","sport"]`, `waterproof: bool = False` | **즉시 반영.** 저장한 값을 그대로 되돌려 사용자가 확인하게 한다. 같은 이름이 있으면 중복 안내 |
@@ -328,7 +327,7 @@ stylist_agent의 답은 Supervisor가 그대로 사용자에게 넘긴다(§9.2)
 - 후보의 격식은 top과 bottom의 formality 중 낮은 쪽으로 본다(순서 `casual` < `smart` < `formal`, `sport`는 `casual`과 같은 단계). "smart 이상"은 `smart`나 `formal`, "격식 룩"은 `formal`이다.
 - 일정이 있으면 그 일정에 맞춘 후보를 1번에 두고 이유에 일정을 언급한다(예: "저녁 7시 데이트가 있어서 셔츠와 슬랙스로").
 - 최근 입은 옷은 가능하면 피하고, 쓸 수밖에 없으면 이유에 밝힌다.
-- 비슷한 기온의 날에 "추웠다"는 피드백이 있으면 그날보다 한 단계 따뜻하게, "더웠다"면 한 단계 가볍게 고르고, 이유에 그날을 밝힌다(예: "10/29 체감 13℃에 베이지 트렌치코트로 추우셨어서 카키 필드재킷으로"). 비교는 코드가 `feedback_fit`으로 표시하고(§7), stylist는 표시된 옷을 1번에 넣는다(최근 입은 옷이어도 우선). 표시된 옷이 없으면 그날 피드백을 이유에 쓰지 않는다.
+- 비슷한 기온의 날에 "추웠다"는 피드백이 있으면 그날보다 한 단계 따뜻하게, "더웠다"면 한 단계 가볍게 고르고, 이유에 그날을 밝힌다(예: "10/29 체감 13℃에 베이지 트렌치코트로 추우셨어서 카키 필드재킷으로").
 - 오늘 `umbrella` 플래그나 일정(`date`/`formal`/`workout`)이 있으면 `search_wear_history`를 같은 조건(`rain="yes"`, `event_type`)으로 한 번 호출한다. 그날 기온 밖의 불편("신발이 젖었어")이 기록된 옷은 피하고, 이유에 그날을 밝힌다(예: "11/3 비 오는 날 화이트 스니커즈가 젖으셨어서 브라운 첼시부츠로"). 조건이 둘이면 한 번에 둘 다 넣는다.
 
 ### 9.2 Supervisor
@@ -381,7 +380,6 @@ Command(resume={"decisions": [{"type": "reject", "message": "사유"}]})
 ### 11.2 출력 가드레일 (`output_guard`, Supervisor 뒷단 함수)
 1. **옷 실재 검증(코드)**: 코디 줄(`1)`, `2)` …로 시작하는 줄)을 ` + `로 나누고, 조각마다 clothes.json의 `name`과 정확히 일치하는지 본다. 일치하지 않는 조각이 있거나 `laundry` 상태 옷이 든 후보는 이유 줄까지 통째로 빼고, 남은 후보의 번호를 1부터 다시 매긴다(표시만 하고 내보내지 않는다. SERVICE.md §5의 0건 기준). 뺀 후보는 `logs/guard_audit.log`에 남긴다. 남은 후보가 없으면 응답을 `REFUSAL_MESSAGES["no_outfit"]`로 바꾸고 추천 기록과 자동 기록을 하지 않는다. 남은 후보의 옷 id가 §5.5의 `item_ids`가 된다
 2. 범위 이탈: 옷·날씨·일정과 무관한 단정적 조언(의료, 금융 등)은 `off_topic` 문구로 교체한다
-3. 형식 정리(코드): 후보가 남은 추천 응답은 §9.1의 빈 줄 규칙(첫 후보 앞과 `챙길 것:` 앞에만 한 줄)에 맞춘다
 
 - `output_guard`는 최종 텍스트만 받는 함수라 `tool_calls`를 볼 일이 없다. 응답을 바꿨으면 원래 메시지와 같은 `id`의 AIMessage로 체크포인트를 갱신한다(`aupdate_state`). 그래야 다음 턴의 Supervisor가 고치기 전 응답을 보지 않는다
 
