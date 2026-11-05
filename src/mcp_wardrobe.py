@@ -1,4 +1,4 @@
-"""FastMCP 옷장 서버: src/wardrobe.py를 감싸는 얇은 래퍼(후보 옷, 일정, 프로필)."""
+"""FastMCP 옷장 서버: src/wardrobe.py·feedback.py·retriever.py를 감싸는 얇은 래퍼(후보 옷, 일정, 프로필, 착용 기록 검색)."""
 
 import contextlib
 import io
@@ -10,9 +10,10 @@ from pydantic import Field
 with contextlib.redirect_stderr(io.StringIO()):  # fastmcp가 불러오는 authlib의 강제 DeprecationWarning을 숨긴다
     from fastmcp import FastMCP
 
-from src import feedback
+from src import feedback, retriever
 from src.config import resolve_date, today
 from src import wardrobe
+from src.guardrails import audit, rule_check
 from src.wardrobe import (
     events_on, filter_candidates, load_clothes, load_profile, load_wear_log, recent_wear, recommendation_on,
     weather_record, write_wear,
@@ -103,7 +104,8 @@ def get_recent_wear(
     """오늘을 포함한 최근 N일의 착용 기록(날짜별 입은 옷 이름, 기록 종류, 피드백)을 최신순으로 조회한다.
 
     "최근에 뭐 입었지?", "지난주에 뭐 입었어?"처럼 지난 며칠의 기록을 날짜순으로 볼 때 쓴다. 기록이 없으면 records가 빈 목록이다.
-    특정 날짜의 추천 후보 번호를 볼 때는 쓰지 않는다(get_recommendation).
+    특정 날짜의 추천 후보 번호를 볼 때는 쓰지 않는다(get_recommendation). 비 온 날·데이트 날·특정 옷을 입은 날처럼
+    조건이나 내용으로 찾을 때는 쓰지 않는다(search_wear_history).
 
     Args:
         days: 1~30. 기본 7.
@@ -134,6 +136,47 @@ def get_recommendation(
         if rec is None:
             return f"그날 추천이 없습니다({day.isoformat()}). 추천 번호 대신 입은 옷 이름을 알려 달라고 하세요."
         return _dump(rec)
+    except Exception as e:
+        return _error(e)
+
+
+def _mask_feedback(result: dict) -> dict:
+    """저장된 피드백 텍스트에 1차 정규식을 적용해, 걸리면 "[가려짐]"으로 바꾸고 감사 로그에 남긴다(원본 JSON은 그대로)."""
+    for record in result["records"]:
+        for fb in record["feedback"]:
+            hit = rule_check(fb["text"])
+            if hit:
+                audit("retrieval", hit[0], {"date": record["date"], "reason": hit[1], "text": fb["text"][:200]})
+                fb["text"] = "[가려짐]"
+    return result
+
+
+@mcp.tool()
+def search_wear_history(
+    query: Annotated[str, Field(description="찾고 싶은 기록을 자연어로 (예: 비 와서 신발이 젖은 날)", min_length=1, max_length=200)],
+    rain: Annotated[Literal["", "yes", "no"], Field(description="yes=비 온 날만, no=비 안 온 날만, 빈 값이면 거르지 않음")] = "",
+    event_type: Annotated[Literal["", "date", "workout", "formal", "outdoor", "etc"], Field(description="그 종류의 일정이 있던 날만. 빈 값이면 거르지 않음")] = "",
+    item_name: Annotated[str, Field(description="그 옷을 입은 날만. 옷 이름(clothes의 name) 그대로. 빈 값이면 거르지 않음", max_length=30)] = "",
+    direction: Annotated[Literal["", "cold", "hot", "ok"], Field(description="그 피드백(추웠다/더웠다/괜찮았다)이 있던 날만. 빈 값이면 거르지 않음")] = "",
+    k: Annotated[int, Field(description="돌려받을 기록 수 (1~5)", ge=1, le=5)] = 3,
+) -> str:
+    """상황(비 온 날, 데이트 날), 입은 옷, 피드백 표현으로 지난 착용 기록(날씨, 일정, 입은 옷, 피드백)을 찾는다.
+
+    "저번에 비 왔을 때 뭐 입었더라?", "베이지 트렌치코트 입었던 날 어땠어?", "신발 젖었던 날 언제야?"처럼
+    지난 기록을 조건이나 내용으로 찾을 때 쓴다. 조건에 맞는 기록이 없으면 그렇다고 안내하는 문자열을 돌려준다.
+    최근 며칠의 기록을 날짜순으로 볼 때는 쓰지 않는다(get_recent_wear). 기온이 비슷했던 날은 get_candidates의 similar_days를 본다.
+
+    Args:
+        query: 찾을 내용 자연어.
+        rain: yes / no / 빈 값.
+        event_type: date / workout / formal / outdoor / etc / 빈 값.
+        item_name: 옷 이름 그대로 또는 빈 값.
+        direction: cold / hot / ok / 빈 값.
+        k: 1~5. 기본 3.
+    """
+    try:
+        result = retriever.search(query.strip(), rain, event_type, item_name, direction, k)
+        return result if isinstance(result, str) else _dump(_mask_feedback(result))
     except Exception as e:
         return _error(e)
 

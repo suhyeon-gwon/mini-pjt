@@ -12,9 +12,11 @@ from src.config import ROOT_DIR
 SERVERS = {"weather": "src.mcp_weather", "wardrobe": "src.mcp_wardrobe"}
 
 AGENT_TOOLS = {
-    "stylist_agent": ["get_today_weather", "get_candidates", "get_calendar", "get_profile", "list_clothes"],
+    "stylist_agent": ["get_today_weather", "get_candidates", "get_calendar", "get_profile", "list_clothes",
+                      "search_wear_history"],
     "closet_agent": ["list_clothes", "add_clothing", "update_status", "add_event"],
-    "log_agent": ["get_recent_wear", "get_recommendation", "get_profile", "confirm_wear", "record_feedback", "update_profile"],
+    "log_agent": ["get_recent_wear", "get_recommendation", "search_wear_history", "get_profile", "confirm_wear",
+                  "record_feedback", "update_profile"],
 }
 HITL_TOOLS = ("confirm_wear", "update_profile")  # 학습 기록(착용 기록, 프로필)을 바꾸는 도구만 사람 승인
 

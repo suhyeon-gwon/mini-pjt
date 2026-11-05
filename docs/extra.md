@@ -501,6 +501,12 @@ id,category,input,expected_traits,forbidden,expected_tools,note
   1. `expected_tools`: `ask()`가 돌려준 `trace`(§12.3, HITL은 `interrupted` 포함)의 `tool`에 모두 들어 있다 (코드 판정)
   2. `forbidden`: 작은따옴표 항목은 `answer` 문자열에 없다(코드 판정). 나머지 항목은 judge가 `answer`를 보고 판정한다
   3. `expected_traits`: 항목마다 judge가 `answer`의 충족 여부를 판정한다 (lecture.md §9.5 LLM-as-Judge, judge 모델과 파라미터는 상수로 고정, `temperature=0`)
+- 구현 세부
+  - 실행: `python evaluation/run_eval.py [--ids 1,2] [--no-judge] [--round N]`. `--no-judge`는 판정 없이 응답과 도구만 찍고, `--round N`은 회차 리포트를 쓴다
+  - 평가 날짜는 `EVAL_DATE = 2026-11-05`(기본 일정이 없는 날)로 고정한다. 체크포인터는 인메모리(`InMemorySaver`)라 `logs/checkpoints.sqlite`에 평가 스레드가 쌓이지 않는다
+  - 문항마다 백업해 둔 데이터에서 시작하되, 평가 날짜 이후의 착용·추천 기록(CLI로 시험한 흔적)은 빼고 시작한다. 그 위에 `calendar`(오늘 일정)와 `state`를 만든다. `history`는 만든 뒤 위 정의를 코드로 확인하고, 어긋나면 그 문항을 오류로 표시한다
+  - 코드 판정을 더 한다: `expected_traits`·`forbidden`의 "정해진 거절 문구"는 `REFUSAL_MESSAGES` 문자열로 판정하고, `note`의 "X·Y 호출 없어야 함"은 `trace`에 그 도구가 없어야, "도구 호출 0회"는 `contexts`가 비어야 통과다. `note`에 `source=auto`가 있으면(11번) 오늘 착용 기록이 1번 후보와 같은 `auto` 기록인지 본다
+  - judge에는 최종 응답과 함께 옷장, 착용 기록, 사전 조건, 이번 턴 도구 호출·결과를 사실 확인 자료로 넘긴다(지어낸 옷·기록 판정용). HITL 승인 요청은 응답이 아니라 승인 화면으로 가므로 `trace`에 `interrupted`가 있으면 확인 요청을 한 것으로 본다
 - 출력: category별 통과율과 실패 문항 목록을 콘솔에 찍고, 회차 결과를 `evaluation/round1_report.md`(1차), `evaluation/round2_report.md`(개선 후)로 남긴다. 리포트에는 실패 원인과 다음 회차에서 고칠 것을 적는다.
 - 필수 컬럼이 비었거나 category가 4종이 아닌 행은 조용히 넘기지 말고 "채점 제외"로 따로 표시한다.
 
