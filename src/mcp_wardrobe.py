@@ -83,16 +83,16 @@ def get_calendar(
 
 @mcp.tool()
 def get_profile() -> str:
-    """내 프로필(지역, 추위 민감도 -2~+2, 선호 스타일, 최근 착용 회피 일수)을 조회한다.
+    """내 프로필(지역, 추위 민감도 -2~+2, 선호 스타일, 최근 착용 회피 일수)과 바꿀 수 있는 범위(change_rules)를 조회한다.
 
-    추천할 때 지역 이름과 선호 스타일을 확인하거나, 사용자가 자기 설정을 물을 때 쓴다.
+    추천할 때 지역 이름과 선호 스타일을 확인하거나, 사용자가 자기 설정을 물을 때, 프로필을 바꾸기 전에 범위를 볼 때 쓴다.
     프로필을 바꿀 때는 쓰지 않는다(update_profile).
 
     Args:
         없음.
     """
     try:
-        return _dump(load_profile())
+        return _dump({**load_profile(), "change_rules": feedback.change_rules()})
     except Exception as e:
         return _error(e)
 
@@ -274,9 +274,9 @@ def list_clothes(
     category: Annotated[Literal["", "top", "bottom", "outer", "shoes", "accessory"], Field(description="빈 값이면 전체")] = "",
     status: Annotated[Literal["", "available", "laundry"], Field(description="available=입을 수 있음, laundry=세탁 중. 빈 값이면 전체")] = "",
 ) -> str:
-    """옷장의 옷 목록(id, 이름, 종류, 두께, 색, 격식, 방수, 세탁 상태)을 조회한다.
+    """옷장의 옷 목록(id, 이름, 종류, 두께, 색, 격식, 방수, 세탁 상태)을 조회한다. status로 거르면 빠진 옷은 excluded_by_status에 있다.
 
-    "내 아우터 뭐 있어?"처럼 옷장을 볼 때, 특정 옷("빨간 패딩")이 옷장에 있는지·세탁 중인지 확인할 때,
+    "내 아우터 뭐 있어?"처럼 옷장을 볼 때, 특정 옷("빨간 패딩")이 옷장에 있는지·세탁 중인지 확인할 때(이때는 status를 비운다),
     옷 이름으로 id를 찾을 때(update_status, confirm_wear 전에) 쓴다.
     오늘 날씨에 맞는 후보를 고를 때는 쓰지 않는다(get_candidates).
 
@@ -286,7 +286,11 @@ def list_clothes(
     """
     try:
         rows = wardrobe.list_clothes(category, status)
-        return _dump({"count": len(rows), "clothes": rows})
+        result = {"count": len(rows), "clothes": rows}
+        if status:  # 상태로 걸러 빠진 옷도 알린다(빠진 세탁 중인 옷을 "옷장에 없다"고 하지 않게)
+            hidden = [c for c in wardrobe.list_clothes(category) if c["status"] != status]
+            result["excluded_by_status"] = [{"name": c["name"], "status": c["status"]} for c in hidden]
+        return _dump(result)
     except Exception as e:
         return _error(e)
 

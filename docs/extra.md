@@ -250,10 +250,10 @@ docstring은 lecture.md §6.3 규칙(무엇/언제/언제 아님/인자)을 따�
 | 도구 | 종류 | 인자 | 비고 |
 |---|---|---|---|
 | `get_candidates` | 조회 | — (항상 오늘) | 오늘 날씨를 내부에서 조회해 §7 필터 결과를 카테고리별로 반환. 비슷한 기온의 날(입은 옷, 피드백)을 함께 반환 |
-| `list_clothes` | 조회 | `category: Literal["","top","bottom","outer","shoes","accessory"] = ""`, `status: Literal["","available","laundry"] = ""` | 빈 값이면 전체 |
+| `list_clothes` | 조회 | `category: Literal["","top","bottom","outer","shoes","accessory"] = ""`, `status: Literal["","available","laundry"] = ""` | 빈 값이면 전체. status로 거르면 빠진 옷을 `excluded_by_status`(이름·상태)로 함께 돌려준다(걸러진 세탁 중인 옷을 "옷장에 없다"고 답하지 않게. 1차 평가 18번) |
 | `get_recent_wear` | 조회 | `days: int = 7` (1~30) | 날짜별 착용 옷 이름과 피드백 |
 | `get_calendar` | 조회 | `date: str = ""` | 내 캘린더에서 해당 날짜 일정을 가져온다(데모에서는 `calendar.json`). 일정이 없으면 빈 목록 |
-| `get_profile` | 조회 | — | |
+| `get_profile` | 조회 | — | 프로필과 함께 코드가 만든 `change_rules`(추위 민감도 -2~+2·한 번에 1단계·지금 바꿀 수 있는 값, 가능한 지역)를 돌려준다. 규칙 밖 요청이면 `update_profile`을 부르지 않고 범위를 안내한다(1차 평가 24번) |
 | `get_recommendation` | 조회 | `date: str` | 그날 추천 후보(번호별 옷 이름·id). "어제 2번 입었어"처럼 지난 추천을 번호로 말할 때 쓴다 |
 | `search_wear_history` | 조회 | `query: str`(자연어, 필수), `rain: Literal["","yes","no"] = ""`, `event_type: Literal["","date","workout","formal","outdoor","etc"] = ""`, `item_name: str = ""`, `direction: Literal["","cold","hot","ok"] = ""`, `k: int = 3`(1~5) | 상황(비 온 날, 데이트 날), 옷, 피드백 표현으로 지난 착용 기록을 찾는다(§8.3). 최근 N일을 날짜순으로 볼 때는 `get_recent_wear` |
 | `add_clothing` | 실행 | `name: str`, `category: Literal["top","bottom","outer","shoes","accessory"]`, `warmth: int`(1~5, `Field(ge=1, le=5)`), `color: str`(영문 소문자), `formality: Literal["casual","smart","formal","sport"]`, `waterproof: bool = False` | **즉시 반영.** 저장한 값을 그대로 되돌려 사용자가 확인하게 한다. 같은 이름이 있으면 중복 안내 |
@@ -290,7 +290,7 @@ docstring은 lecture.md §6.3 규칙(무엇/언제/언제 아님/인자)을 따�
 
 ## 9. Agent
 
-모든 하위 Agent는 `create_agent(..., name=...)`로 만들고 미들웨어 `[ToolCallLimitMiddleware(thread_limit=10), (ToolFirstMiddleware), (HITL), LoggingMiddleware]`를 이 순서로 붙인다(lecture.md §7.11). `ToolFirstMiddleware`는 `closet_agent`·`log_agent`·`stylist_agent`에 붙인다(stylist는 답에 코디 줄이 있을 때만 되돌린다. "1번 이유 다시 말해줘"처럼 앞선 추천을 설명하는 답은 도구 없이 답하는 게 맞다. 긴 대화에서 stylist가 도구 없이 앞선 추천(다른 날씨)을 그대로 옮긴 사례가 있었다). Supervisor(`output_mode="last_message"`) 대화 기록에는 하위 Agent의 최종 답만 남고 도구 호출은 빠지므로, 모델이 이전 턴과 핸드오프 메시지("Transferring back to supervisor")를 흉내 내 도구 없이 "입을 수 있음으로 바꿨습니다"라고 답할 수 있다. 그래서 모델 입력에서 핸드오프 도구 호출·결과를 빼고(State는 그대로), 이번 요청에서 자기 도구를 한 번도 부르지 않고 최종 답을 내면 안내 메시지를 붙여 모델을 한 번 더 부른다(요청당 한 번, 되묻는 답이면 같은 답을 다시 쓴다). 시스템 프롬프트는 5줄 이내로 쓰고(단 `stylist_agent`는 §9.1 규칙을 담아야 하므로 예외로 한다), 범위 밖 질문에는 "담당 범위가 아닙니다"라고만 답하게 한다(lecture.md §8.2). 단 `general_agent`는 `off_topic` 문구로 답한다(§11.1).
+모든 하위 Agent는 `create_agent(..., name=...)`로 만들고 미들웨어 `[ToolCallLimitMiddleware(thread_limit=10), (ToolFirstMiddleware), (HITL), LoggingMiddleware]`를 이 순서로 붙인다(lecture.md §7.11). `ToolFirstMiddleware`는 `closet_agent`·`log_agent`·`stylist_agent`에 붙인다(stylist는 답에 코디 줄이 있을 때만 되돌린다. "1번 이유 다시 말해줘"처럼 앞선 추천을 설명하는 답은 도구 없이 답하는 게 맞다. 긴 대화에서 stylist가 도구 없이 앞선 추천(다른 날씨)을 그대로 옮긴 사례가 있었다). Supervisor(`output_mode="last_message"`) 대화 기록에는 하위 Agent의 최종 답만 남고 도구 호출은 빠지므로, 모델이 이전 턴과 핸드오프 메시지("Transferring back to supervisor")를 흉내 내 도구 없이 "입을 수 있음으로 바꿨습니다"라고 답할 수 있다. 그래서 모델 입력에서 앞선 턴의 핸드오프 도구 호출·결과를 빼고(State는 그대로. 이번 턴 것은 남긴다: 다 빼면 대화가 다른 Agent의 답으로 끝나 Bedrock이 이어쓰기로 받아 빈 답을 낸다. 1차 평가 14번), 이번 요청에서 자기 도구를 한 번도 부르지 않고 최종 답을 내면 안내 메시지를 붙여 모델을 한 번 더 부른다(요청당 한 번, 되묻는 답이면 같은 답을 다시 쓴다). 시스템 프롬프트는 5줄 이내로 쓰고(단 `stylist_agent`는 §9.1 규칙을 담아야 하므로 예외로 한다), 범위 밖 질문에는 "담당 범위가 아닙니다"라고만 답하게 한다(lecture.md §8.2). 단 `general_agent`는 `off_topic` 문구로 답한다(§11.1).
 
 | Agent | 담당 (Supervisor 배분 기준 명사) | 도구 | HITL |
 |---|---|---|---|
@@ -509,7 +509,7 @@ id,category,input,expected_traits,forbidden,expected_tools,note
   - 문항마다 백업해 둔 데이터에서 시작하되, 평가 날짜 이후의 착용·추천 기록(CLI로 시험한 흔적)은 빼고 시작한다. 그 위에 `calendar`(오늘 일정)와 `state`를 만든다. `history`는 만든 뒤 위 정의를 코드로 확인하고, 어긋나면 그 문항을 오류로 표시한다
   - 코드 판정을 더 한다: `expected_traits`·`forbidden`의 "정해진 거절 문구"는 `REFUSAL_MESSAGES` 문자열로 판정하고, `note`의 "X·Y 호출 없어야 함"은 `trace`에 그 도구가 없어야, "도구 호출 0회"는 `contexts`가 비어야 통과다. `note`에 `source=auto`가 있으면(11번) 오늘 착용 기록이 1번 후보와 같은 `auto` 기록인지 본다
   - judge에는 최종 응답과 함께 옷장, 착용 기록, 사전 조건, 이번 턴 도구 호출·결과를 사실 확인 자료로 넘긴다(지어낸 옷·기록 판정용). HITL 승인 요청은 응답이 아니라 승인 화면으로 가므로 `trace`에 `interrupted`가 있으면 확인 요청을 한 것으로 본다
-- **LLM-as-Judge 점수**(lecture.md §9.5): 같은 judge 호출에서 항목 판정과 함께 답변 전체를 1~5점으로 매긴다(5점: 직접 답하고 기대 내용을 정확히 담고 지어낸 것이 없음, 3점: 관련은 있으나 일부 빠짐·장황, 1점: 답하지 않거나 틀리거나 금지 내용). 통과 판정에는 쓰지 않고, 문항별·category별 평균을 리포트에만 표시한다.
+- **LLM-as-Judge 점수**(lecture.md §9.5): 같은 judge 호출에서 항목 판정과 함께 답변 전체를 1~5점으로 매긴다(5점: 직접 답하고 기대 내용을 정확히 담고 지어낸 것이 없음, 3점: 관련은 있으나 일부 빠짐·장황, 1점: 답하지 않거나 틀리거나 금지 내용). 통과 판정에는 쓰지 않고, 문항별·category별 평균을 리포트에만 표시한다. 점수를 매길 수 있게 judge에는 문항의 기대·금지 전체를 참고로 넘기고(코드가 판정하는 "정해진 거절 문구" 포함), 거절이 기대인 문항은 정해진 문구로 거절하면 5점이다. judge 구조화 출력이 스키마를 어기면 한 번 더 부른다.
 - **RAGAS 지표**: 이번 턴에 검색 결과(`contexts`의 `kind: "retrieval"`, 곧 `search_wear_history`)가 있는 문항만 계산하고 리포트에만 표시한다(통과 판정에는 쓰지 않음). `ragas` 패키지는 requirements.txt에 없으므로 지표 정의를 따라 judge 모델(`temperature=0`, `with_structured_output`)과 Titan 임베딩으로 직접 계산한다. 검색 단위는 검색 결과의 날짜별 기록 하나이고(기록 목록이 아닌 안내 문자열이면 통째로 하나), 기준 답(reference)은 `expected_traits` 항목이다.
   | 지표 | 계산 |
   |---|---|

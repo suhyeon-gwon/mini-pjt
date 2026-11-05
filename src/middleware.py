@@ -118,7 +118,7 @@ class ToolFirstMiddleware(AgentMiddleware):
     Supervisor(output_mode="last_message")의 대화 기록에는 하위 Agent의 최종 답만 남고 도구 호출은 빠진다.
     그래서 모델이 "바꿨습니다"처럼 도구 없이 답하는 이전 턴과 핸드오프 메시지("Transferring back to supervisor")를
     흉내 내 실행하지 않은 일을 했다고 말할 수 있다.
-    wrap_model_call: 모델 입력에서 핸드오프 도구 호출·결과를 뺀다(State는 그대로).
+    wrap_model_call: 모델 입력에서 앞선 턴의 핸드오프 도구 호출·결과를 뺀다(State는 그대로).
     after_model: 이번 요청에서 자기 도구를 한 번도 부르지 않고 최종 답을 내면 안내를 붙여 모델을 한 번 더 부른다.
     되돌림은 요청당 한 번이다(되묻는 답이면 모델이 같은 답을 다시 쓴다).
     """
@@ -131,12 +131,18 @@ class ToolFirstMiddleware(AgentMiddleware):
 
     @staticmethod
     def _without_handoffs(request):
-        messages = [
-            m for m in request.messages
-            if not (isinstance(m, ToolMessage) and _is_handoff(m.name or ""))
+        """앞선 턴의 핸드오프만 뺀다. 이번 턴 것은 남긴다: 다 빼면 대화가 다른 Agent의 답(AIMessage)으로 끝나
+        Bedrock이 이어쓰기로 받아들여 빈 답을 낸다(복합 질문에서 log_agent 다음 stylist가 빈 답을 낸 사례)."""
+        messages = request.messages
+        start = max((i for i, m in enumerate(messages)
+                     if isinstance(m, HumanMessage) and get_text(m) != TOOL_FIRST_NOTICE), default=-1)
+        kept = [
+            m for i, m in enumerate(messages)
+            if i > start
+            or not (isinstance(m, ToolMessage) and _is_handoff(m.name or ""))
             and not (isinstance(m, AIMessage) and m.tool_calls and all(_is_handoff(c["name"]) for c in m.tool_calls))
         ]
-        return request.override(messages=messages)
+        return request.override(messages=kept)
 
     def wrap_model_call(self, request, handler):
         return handler(self._without_handoffs(request))

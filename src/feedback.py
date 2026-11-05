@@ -55,6 +55,18 @@ def _as_int(value) -> int | None:
     return None
 
 
+def change_rules() -> dict:
+    """프로필 항목별로 바꿀 수 있는 값(change_profile의 검증 규칙을 사람이 읽는 문장으로)."""
+    current = load_profile().get("cold_sensitivity", 0)
+    steps = [v for v in (current - 1, current + 1) if SENSITIVITY_MIN <= v <= SENSITIVITY_MAX]
+    return {
+        "cold_sensitivity": f"정수 {SENSITIVITY_MIN}~+{SENSITIVITY_MAX}, 한 번에 1단계만(지금 {current}에서 바꿀 수 있는 값: "
+                            f"{', '.join(map(str, steps))})",
+        "preferred_styles": "스타일 이름 목록",
+        "region": f"가능한 지역: {', '.join(REGION_GRID)}",
+    }
+
+
 def change_profile(field: str, value) -> dict | str:
     """프로필 한 항목을 검증하고 반영한다. 반영하면 {field, from, to}, 검증에 걸리면 다시 호출 방법을 담은 안내 문자열.
 
