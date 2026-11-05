@@ -4,7 +4,7 @@
 
 ## 기술 스택
 - Python, LangChain, LangGraph, FastMCP (패키지는 requirements.txt에 있는 것만 쓴다. 기상청 HTTP 호출은 표준 라이브러리 `urllib.request`)
-- 모델은 Amazon Bedrock `ChatBedrockConverse` (`us.anthropic.claude-sonnet-4-5-20250929-v1:0`, `us-east-1`). 분류·판정·라우팅·가드레일은 `temperature=0`
+- 모델은 Amazon Bedrock `ChatBedrockConverse`, Claude Sonnet 4.5. 리전은 `.env`의 `AWS_DEFAULT_REGION`(기본 `us-east-1`)을 따르고, 모델 ID는 `BEDROCK_MODEL_ID`가 없으면 리전에 맞는 추론 프로필(us 리전은 `us.anthropic.claude-sonnet-4-5-20250929-v1:0`, 그 밖은 `global.` 접두)을 `config.py`가 고른다. 분류·판정·라우팅·가드레일은 `temperature=0`
 - Agent 생성은 `langchain.agents`의 `create_agent`, 최상위는 `langgraph_supervisor`의 `create_supervisor`. Supervisor에는 `create_forward_message_tool("supervisor")`를 붙여 추천을 다시 쓰지 않고 원문으로 넘긴다
 - 도구는 자체 FastMCP 서버 2개(stdio)로 공급하고 `MultiServerMCPClient`로 붙인다. 그래서 **전부 비동기**다(`ainvoke`, `AsyncSqliteSaver`, `awrap_*`). 체크포인터 DB는 `logs/checkpoints.sqlite`다
 - MCP 서버는 `sys.executable -m src.mcp_weather`처럼 모듈로 띄우고 `cwd`는 프로젝트 루트로 둔다(서버 안의 `from src.… import`가 동작하게)

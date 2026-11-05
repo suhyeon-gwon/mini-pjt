@@ -279,7 +279,7 @@ docstring은 lecture.md §6.3 규칙(무엇/언제/언제 아님/인자)을 따�
   2. 남은 기록이 0건이면 "조건에 맞는 착용 기록이 없습니다"를 반환한다(지어내지 않게). `k`건 이하면 검색 없이 최신순으로 전부 반환한다
   3. 하이브리드 검색: BM25(`kiwipiepy` 토크나이저, 남은 문서로 매번 생성) 0.3 + 벡터(Chroma, `filter={"date": {"$in": 남은 날짜}}`) 0.7을 `EnsembleRetriever`로 묶어 상위 `k`건을 고른다(lecture.md §4.6)
   4. 결과는 JSON 문자열: 날짜별 `weather`, 일정, 입은 옷 이름, `feedback`, `source`
-- **색인 동기화**: wear_log는 MCP 서버 밖에서도 바뀐다(`ask()`의 자동 기록, `run_eval`의 백업·복원). 그래서 Chroma는 인메모리(`persist_directory` 없음)로 두고, 검색할 때마다 wear_log를 읽어 날짜별 본문 해시를 색인과 비교한다. 바뀐 문서만 다시 임베딩해 upsert하고, 사라진 날짜는 지운다. 임베딩은 `BedrockEmbeddings(model_id="amazon.titan-embed-text-v2:0", region_name="us-east-1")`이고, 서버 프로세스가 `.env`를 직접 읽는다
+- **색인 동기화**: wear_log는 MCP 서버 밖에서도 바뀐다(`ask()`의 자동 기록, `run_eval`의 백업·복원). 그래서 Chroma는 인메모리(`persist_directory` 없음)로 두고, 검색할 때마다 wear_log를 읽어 날짜별 본문 해시를 색인과 비교한다. 바뀐 문서만 다시 임베딩해 upsert하고, 사라진 날짜는 지운다. 임베딩은 `BedrockEmbeddings(model_id="amazon.titan-embed-text-v2:0", region_name=config.REGION)`(리전은 `.env`의 `AWS_DEFAULT_REGION`, 기본 us-east-1)이고, 서버 프로세스가 `.env`를 직접 읽는다
 - **주입 방어**: 검색 결과의 `feedback` 텍스트는 사용자 입력이 아니라 저장된 데이터라서 `input_guard`를 거치지 않는다. 그래서 반환하기 전에 `guardrails.py`의 1차 정규식을 적용해, 걸리면 텍스트를 `[가려짐]`으로 바꾸고 `logs/guard_audit.log`에 남긴다. 원본 JSON은 바꾸지 않는다
 - **쓰는 Agent**
   - `log_agent`: "저번에 비 왔을 때 뭐 입었지?", "그 옷 입은 날 어땠어?"처럼 지난 기록을 상황·옷·피드백으로 물을 때

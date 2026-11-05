@@ -27,9 +27,12 @@ GUARD_AUDIT_PATH = os.path.join(LOG_DIR, "guard_audit.log")
 os.makedirs(LOG_DIR, exist_ok=True)
 load_dotenv(os.path.join(ROOT_DIR, ".env"))
 
-# 모델
-MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-REGION = "us-east-1"
+# 모델: 리전은 .env의 AWS_DEFAULT_REGION(기본 us-east-1). 모델 ID는 BEDROCK_MODEL_ID가 없으면
+# 리전에 맞는 Sonnet 4.5 추론 프로필(us 리전은 us., 그 밖은 global.)을 쓴다.
+REGION = os.environ.get("AWS_DEFAULT_REGION", "").strip() or "us-east-1"
+MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "").strip() or (
+    ("us." if REGION.startswith("us-") else "global.") + "anthropic.claude-sonnet-4-5-20250929-v1:0"
+)
 
 # 날씨 모드
 WEATHER_MODES = ("live", "fixture")

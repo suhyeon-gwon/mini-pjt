@@ -5,7 +5,7 @@ import os
 import tempfile
 from datetime import date
 
-from src.config import CALENDAR_PATH, CLOTHES_PATH, PROFILE_PATH, WEAR_LOG_PATH
+from src.config import CALENDAR_PATH, CLOTHES_PATH, PROFILE_PATH, RECOMMENDATIONS_PATH, WEAR_LOG_PATH
 
 CATEGORIES = ("top", "bottom", "outer", "shoes", "accessory")
 SIMILAR_FEELS = 2.0  # 비슷한 기온의 날: 출근·낮 체감온도 차이가 각각 이 이내
@@ -59,6 +59,53 @@ def load_profile() -> dict:
 def load_wear_log() -> list[dict]:
     """착용 기록 전체(날짜별 입은 옷, 날씨 요약, 피드백)."""
     return read_json(WEAR_LOG_PATH)
+
+
+def weather_record(weather: dict) -> dict:
+    """착용·추천 기록에 함께 저장할 날씨 요약(출근·낮·퇴근 체감온도, 일교차, 비 여부)."""
+    seg = weather["segments"]
+    return {
+        "am_feels": seg["am"]["feels"],
+        "day_feels": seg["day"]["feels"],
+        "pm_feels": seg["pm"]["feels"],
+        "range": weather["temp_range"],
+        "rain": weather["flags"]["umbrella"],
+    }
+
+
+def save_recommendation(day_iso: str, candidates: list[list[str]], weather: dict | None) -> None:
+    """그날 추천 후보(번호별 item_ids)를 recommendations.json에 저장한다. 같은 날 추천은 마지막 것으로 덮어쓴다."""
+    recs = [r for r in read_json(RECOMMENDATIONS_PATH) if r["date"] != day_iso]
+    recs.append({
+        "date": day_iso,
+        "candidates": [{"no": no, "item_ids": ids} for no, ids in enumerate(candidates, 1)],
+        "weather": weather,
+    })
+    recs.sort(key=lambda r: r["date"])
+    write_json(RECOMMENDATIONS_PATH, recs)
+
+
+def write_wear(day_iso: str, item_ids: list[str], source: str, weather: dict | None) -> bool:
+    """그날 착용 기록을 쓴다. 쓰면 True, 건드리지 않으면 False.
+
+    자동 기록(auto)은 대화에서 확인된(confirmed) 기록을 덮지 않는다. 어느 쪽이 덮어쓰든 feedback은 유지하고,
+    weather가 None이면 기존 날씨 요약을 그대로 둔다.
+    """
+    log = load_wear_log()
+    entry = next((e for e in log if e["date"] == day_iso), None)
+    if entry is None:
+        log.append({"date": day_iso, "item_ids": item_ids, "source": source, "weather": weather, "feedback": []})
+        log.sort(key=lambda e: e["date"])
+    elif source == "auto" and entry["source"] == "confirmed":
+        return False
+    else:
+        entry.update({
+            "item_ids": item_ids,
+            "source": source,
+            "weather": weather if weather is not None else entry.get("weather"),
+        })
+    write_json(WEAR_LOG_PATH, log)
+    return True
 
 
 def events_on(day: date) -> list[dict]:

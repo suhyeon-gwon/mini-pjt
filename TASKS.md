@@ -15,7 +15,7 @@
     - [x] 묶음 4. Agent에서 CLI까지 (50분)
   - 단계 1. 상대 날짜와 추천 기록 (1시간 20분)
     - [ ] 묶음 5. 상대 날짜, 비슷한 기온의 날 (30분)
-    - [ ] 묶음 6. 기록 함수, output_guard, ask() 뒷단 (50분)
+    - [x] 묶음 6. 기록 함수, output_guard, ask() 뒷단 (50분)
   - 단계 2. 나머지 Agent, HITL, 가드레일, 관측 (3시간 5분)
     - [ ] 묶음 7. log_agent와 HITL 스모크 테스트 (55분)
     - [ ] 묶음 8. HITL 프롬프트와 closet_agent (50분)
@@ -46,7 +46,7 @@
 ### 묶음 1. 설정과 기본 데이터 (35분)
 
 #### 1-1. 골격과 `src/config.py` (10분)
-- 할 일: `src/`(+빈 `src/__init__.py`), `data/fixtures/`, `logs/` 폴더(`.gitignore`에 `logs/`). `src/__init__.py`와 `.gitignore`는 준비 단계에서 끝냈다. `config.py`에 경로 상수(`__file__` 기준, 체크포인터 DB `logs/checkpoints.sqlite` 포함), `llm(temperature=...)` 팩토리(`ChatBedrockConverse`, sonnet-4-5, us-east-1), `get_text()`, `today()`(`TODAY_OVERRIDE`), `WEATHER_MODE`/`WEATHER_FIXTURE` 읽기, `.env` 로드
+- 할 일: `src/`(+빈 `src/__init__.py`), `data/fixtures/`, `logs/` 폴더(`.gitignore`에 `logs/`). `src/__init__.py`와 `.gitignore`는 준비 단계에서 끝냈다. `config.py`에 경로 상수(`__file__` 기준, 체크포인터 DB `logs/checkpoints.sqlite` 포함), `llm(temperature=...)` 팩토리(`ChatBedrockConverse`, sonnet-4-5, 리전은 `.env`의 `AWS_DEFAULT_REGION`·모델 ID는 리전에 맞는 추론 프로필), `get_text()`, `today()`(`TODAY_OVERRIDE`), `WEATHER_MODE`/`WEATHER_FIXTURE` 읽기, `.env` 로드
 - 확인: `python -c "from src.config import llm, get_text, today; print(today(), get_text(llm(0).invoke('ping')))"`가 오늘 날짜와 응답 텍스트를 찍는다
 
 #### 1-2. 기본 데이터 만들기 (25분)
