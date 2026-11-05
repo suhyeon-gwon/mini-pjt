@@ -1,10 +1,14 @@
 """FastMCP 옷장 서버: src/wardrobe.py를 감싸는 얇은 래퍼(후보 옷, 일정, 프로필)."""
 
+import contextlib
+import io
 import json
 from typing import Annotated
 
-from fastmcp import FastMCP
 from pydantic import Field
+
+with contextlib.redirect_stderr(io.StringIO()):  # fastmcp가 불러오는 authlib의 강제 DeprecationWarning을 숨긴다
+    from fastmcp import FastMCP
 
 from src.config import resolve_date
 from src.wardrobe import events_on, filter_candidates, load_clothes, load_profile

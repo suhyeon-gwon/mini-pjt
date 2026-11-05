@@ -4,7 +4,6 @@ import os
 from datetime import date
 
 from dotenv import load_dotenv
-from langchain_aws import ChatBedrockConverse
 
 # 경로 (이 파일 기준)
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -35,10 +34,20 @@ REGION = "us-east-1"
 WEATHER_MODES = ("live", "fixture")
 WEATHER_FIXTURES = ("mild", "rainy", "cold", "error")
 
+# MCP 서버에 env로 넘기는 실행 설정 (비밀 값은 넣지 않는다)
+SETTING_KEYS = ("WEATHER_MODE", "WEATHER_FIXTURE", "TODAY_OVERRIDE")
 
-def llm(temperature: float = 0.0) -> ChatBedrockConverse:
+
+def llm(temperature: float = 0.0):
     """Bedrock Claude 채팅 모델을 만든다. 분류·판정·라우팅·가드레일은 temperature=0으로 부른다."""
+    from langchain_aws import ChatBedrockConverse  # MCP 서버는 LLM을 쓰지 않으므로 시작을 늦추지 않게 여기서 import
+
     return ChatBedrockConverse(model=MODEL_ID, region_name=REGION, temperature=temperature)
+
+
+def run_settings() -> dict:
+    """현재 프로세스 환경변수에서 실행 설정(WEATHER_MODE, WEATHER_FIXTURE, TODAY_OVERRIDE)을 읽는다. 빈 값은 뺀다."""
+    return {k: os.environ[k] for k in SETTING_KEYS if os.environ.get(k, "").strip()}
 
 
 def get_text(message) -> str:

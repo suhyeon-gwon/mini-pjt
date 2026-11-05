@@ -66,6 +66,7 @@ ask() 뒷단(코드): output_guard → 추천 응답이면 recommendations.json 
 - 기본 사용자는 `user_id = "me"` 한 명이다.
 - **실행 설정 전달**: 도구는 MCP 서버 프로세스에서 돈다. stdio 클라이언트는 `env`를 주지 않으면 PATH 같은 일부 변수만 하위 프로세스에 넘기므로, `build_app(checkpointer, settings)`가 `WEATHER_MODE`, `WEATHER_FIXTURE`, `TODAY_OVERRIDE`(§6.2)를 `MultiServerMCPClient`의 서버별 `env`에 명시해 넘긴다. 비밀 값(AWS 키, `KMA_SERVICE_KEY`)은 넘기지 않고 서버가 `.env`를 직접 읽는다.
   - 서버는 `sys.executable -m src.mcp_weather`처럼 모듈로 띄우고 `cwd`를 프로젝트 루트로 둔다(서버 안의 `from src.… import`가 동작하게).
+  - 서버 세션은 앱이 사는 동안 유지한다. `MultiServerMCPClient.get_tools()`는 도구를 호출할 때마다 서버를 새로 띄워(약 2초) 서버 메모리의 색인(§8.3)도 매번 사라지므로, `client.session()` + `load_mcp_tools()`로 연 세션을 `AsyncExitStack`에 묶는다. 그래서 시그니처는 `build_app(checkpointer, settings, stack)`이고, 설정이 바뀌면 이전 stack을 닫고 새 stack으로 다시 부른다.
   - 서버는 시작할 때 받은 값으로 고정된다. 설정이 바뀌면(`/date`, `run_eval`의 문항별 fixture) `build_app()`을 다시 불러 MCP 서버를 새로 띄운다. 체크포인터는 다시 만들지 않고 넘겨 쓴다.
   - `chat.py`·`run_eval.py` 프로세스도 같은 값을 `os.environ`에 둔다. 그래야 `ask()`의 추천 기록·자동 기록이 서버와 같은 "오늘"을 쓴다.
 

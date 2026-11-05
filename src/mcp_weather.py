@@ -1,8 +1,11 @@
 """FastMCP 날씨 서버: src/weather.py를 감싸는 얇은 래퍼."""
 
+import contextlib
+import io
 import json
 
-from fastmcp import FastMCP
+with contextlib.redirect_stderr(io.StringIO()):  # fastmcp가 불러오는 authlib의 강제 DeprecationWarning을 숨긴다
+    from fastmcp import FastMCP
 
 from src.weather import today_weather
 

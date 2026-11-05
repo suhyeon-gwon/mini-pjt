@@ -12,7 +12,7 @@
     - [x] 묶음 1. 설정과 기본 데이터 (35분)
     - [x] 묶음 2. 날씨 fixture와 계산 (50분)
     - [x] 묶음 3. 1차 필터와 MCP 서버 (45분)
-    - [ ] 묶음 4. Agent에서 CLI까지 (50분)
+    - [x] 묶음 4. Agent에서 CLI까지 (50분)
   - 단계 1. 상대 날짜와 추천 기록 (1시간 20분)
     - [ ] 묶음 5. 상대 날짜, 비슷한 기온의 날 (30분)
     - [ ] 묶음 6. 기록 함수, output_guard, ask() 뒷단 (50분)
@@ -76,7 +76,7 @@
 ### 묶음 4. Agent에서 CLI까지 (50분)
 
 #### 4-1. `tools.py`, `stylist_agent`, Supervisor (35분)
-- 할 일: `tools.py`에 `MultiServerMCPClient`(서버별 `env`에 `WEATHER_MODE`/`WEATHER_FIXTURE`/`TODAY_OVERRIDE` 명시, `sys.executable -m src.mcp_*`, `cwd`=프로젝트 루트)와 Agent별 도구 나누기. `agent.py`에 `stylist_agent`(`create_agent`. extra.md §9.1 출력 형식, 일정별 격식 표, 운동 일정이면 "운동복", 오늘이 아닌 날은 도구 없이 안내하는 규칙을 처음부터 프롬프트에 넣는다), `create_supervisor([stylist_agent], tools=[create_forward_message_tool("supervisor")], output_mode="last_message")`, `AsyncSqliteSaver`(`logs/checkpoints.sqlite`), `build_app(checkpointer, settings)`, `recursion_limit=25`, thread_id `me:YYYY-MM-DD`
+- 할 일: `tools.py`에 `MultiServerMCPClient`(서버별 `env`에 `WEATHER_MODE`/`WEATHER_FIXTURE`/`TODAY_OVERRIDE` 명시, `sys.executable -m src.mcp_*`, `cwd`=프로젝트 루트)와 Agent별 도구 나누기. `agent.py`에 `stylist_agent`(`create_agent`. extra.md §9.1 출력 형식, 일정별 격식 표, 운동 일정이면 "운동복", 오늘이 아닌 날은 도구 없이 안내하는 규칙을 처음부터 프롬프트에 넣는다), `create_supervisor([stylist_agent], tools=[create_forward_message_tool("supervisor")], output_mode="last_message")`, `AsyncSqliteSaver`(`logs/checkpoints.sqlite`), `build_app(checkpointer, settings, stack)`(MCP 세션은 `AsyncExitStack`에 묶어 유지, extra.md §3), `recursion_limit=25`, thread_id `me:YYYY-MM-DD`
 - 확인: `build_app()` 앱에 "오늘 뭐 입지?"를 보내면 최종 메시지가 stylist 원문과 글자 그대로 같고(`forward_message`), 날씨 한 줄·`1)`~`3)` 후보·`챙길 것:` 줄·마지막 안내 줄이 있으며 옷 이름이 모두 clothes.json `name`과 일치한다
 
 #### 4-2. `chat.py` 최소 버전 (15분)
