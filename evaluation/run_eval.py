@@ -549,8 +549,16 @@ def decide_for(kind: str):
     return decide
 
 
+def _throttled(error_text: str) -> bool:
+    """Bedrock 토큰·요청 한도 초과 오류인지(이후 문항도 모두 같은 오류가 나므로 채점을 멈춘다)."""
+    return "Throttling" in error_text or "Too many tokens" in error_text
+
+
 async def run(rows: list[dict], judge_on: bool) -> list[dict]:
-    """문항을 순서대로 돌린다. 설정(fixture)이 바뀔 때만 앱을 다시 만들고, 끝나면 data/*.json을 원래 바이트로 되돌린다."""
+    """문항을 순서대로 돌린다. 설정(fixture)이 바뀔 때만 앱을 다시 만들고, 끝나면 data/*.json을 원래 바이트로 되돌린다.
+
+    Bedrock 한도 초과(Throttling)가 나면 그 문항부터는 돌리지 않고 status "not_run"으로 남긴다(채점된 데까지만 집계).
+    """
     backup = {}
     for path in DATA_FILES:
         with open(path, "rb") as f:
@@ -558,12 +566,16 @@ async def run(rows: list[dict], judge_on: bool) -> list[dict]:
     baseline = make_baseline(backup)
     today = date.fromisoformat(EVAL_DATE)
     saver, stack, app, current = InMemorySaver(), None, None, None
-    results = []
+    results, stopped = [], None
     try:
-        for row in rows:
+        for no, row in enumerate(rows, 1):
             out = {"id": row["id"], "category": row["category"], "input": row["input"], "note": row["note"],
                    "status": "excluded", "failures": [], "answer": "", "tools": [], "score": None, "ragas": None}
             results.append(out)
+            if stopped:
+                out["status"], out["failures"] = "not_run", [f"미실행: {stopped}"]
+                continue
+            print(f"[{no}/{len(rows)}] {row['id']}번 시작: {row['input'][:40]}", flush=True)
             if row["excluded"]:
                 out["failures"] = [row["excluded"]]
                 print(f"[채점 제외] {row['id'] or '(id 없음)'} (CSV {row['line']}행): {row['excluded']}")
@@ -597,6 +609,11 @@ async def run(rows: list[dict], judge_on: bool) -> list[dict]:
                     out["status"] = "done"
             except Exception as e:
                 out["status"], out["failures"] = "error", [f"실행 오류: {type(e).__name__}: {str(e)[:200]}"]
+            if _throttled(" ".join(out["failures"]) + out.get("ragas_error", "")):
+                stopped = f"{row['id']}번에서 Bedrock 한도 초과(Throttling)로 채점을 멈춤"
+                out["status"], out["failures"], out["score"], out["ragas"] = "not_run", [stopped], None, None
+                print(f"[중단] {stopped}. 여기까지 채점된 문항만 집계합니다.", flush=True)
+                continue
             seconds = time.perf_counter() - started
             extra = " ".join(filter(None, [f"judge {out['score']}/5" if out["score"] else "", _ragas_text(out["ragas"]),
                                            f"RAGAS 오류 {out['ragas_error']}" if out.get("ragas_error") else ""]))
@@ -621,6 +638,10 @@ def summarize(results: list[dict]) -> list[str]:
     passed = [r for r in graded if r["status"] == "pass"]
     lines = [f"통과: {len(passed)} / {len(graded)} (기준 {PASS_TARGET}건 이상, 채점 제외 "
              f"{sum(r['status'] == 'excluded' for r in results)}건)"]
+    not_run = [r for r in results if r["status"] == "not_run"]
+    if not_run:
+        lines.insert(0, f"**중단됨**: {not_run[0]['failures'][0]}. 미실행 {len(not_run)}건"
+                        f"({not_run[0]['id']}번~)은 집계에서 뺐다(통과율은 채점된 {len(graded)}건 기준).")
     for cat in CATEGORIES:
         rows = [r for r in graded if r["category"] == cat]
         ok = sum(r["status"] == "pass" for r in rows)
@@ -650,7 +671,7 @@ def summarize(results: list[dict]) -> list[str]:
 def write_report(round_no: int, results: list[dict], summary: list[str]) -> str:
     """evaluation/round{N}_report.md를 쓴다. 실패 원인 분석과 다음 회차에서 고칠 것은 이 파일에 이어서 적는다."""
     path = os.path.join(ROOT_DIR, "evaluation", f"round{round_no}_report.md")
-    mark = {"pass": "통과", "fail": "실패", "error": "오류", "excluded": "채점 제외"}
+    mark = {"pass": "통과", "fail": "실패", "error": "오류", "excluded": "채점 제외", "not_run": "미실행"}
     lines = [f"# {round_no}차 평가 결과", "",
              f"- 실행: {datetime.now().isoformat(timespec='minutes')}, 평가 날짜 {EVAL_DATE}, WEATHER_MODE=fixture",
              f"- judge: {JUDGE_MODEL} (temperature {JUDGE_TEMPERATURE})", "", "## 요약", "", *summary, "",
