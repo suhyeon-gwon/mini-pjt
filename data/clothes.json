@@ -1,0 +1,202 @@
+[
+  {
+    "id": "c001",
+    "name": "베이지 트렌치코트",
+    "category": "outer",
+    "warmth": 2,
+    "color": "beige",
+    "formality": "smart",
+    "waterproof": true,
+    "status": "available"
+  },
+  {
+    "id": "c002",
+    "name": "카키 필드재킷",
+    "category": "outer",
+    "warmth": 3,
+    "color": "khaki",
+    "formality": "casual",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c003",
+    "name": "네이비 바람막이",
+    "category": "outer",
+    "warmth": 1,
+    "color": "navy",
+    "formality": "sport",
+    "waterproof": true,
+    "status": "available"
+  },
+  {
+    "id": "c004",
+    "name": "차콜 울 코트",
+    "category": "outer",
+    "warmth": 4,
+    "color": "charcoal",
+    "formality": "formal",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c005",
+    "name": "블랙 롱패딩",
+    "category": "outer",
+    "warmth": 5,
+    "color": "black",
+    "formality": "casual",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c006",
+    "name": "네이비 니트",
+    "category": "top",
+    "warmth": 3,
+    "color": "navy",
+    "formality": "smart",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c007",
+    "name": "화이트 옥스포드 셔츠",
+    "category": "top",
+    "warmth": 2,
+    "color": "white",
+    "formality": "formal",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c008",
+    "name": "회색 후드티",
+    "category": "top",
+    "warmth": 3,
+    "color": "gray",
+    "formality": "casual",
+    "waterproof": false,
+    "status": "laundry"
+  },
+  {
+    "id": "c009",
+    "name": "스트라이프 긴팔 티셔츠",
+    "category": "top",
+    "warmth": 2,
+    "color": "white",
+    "formality": "casual",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c010",
+    "name": "블랙 기능성 티셔츠",
+    "category": "top",
+    "warmth": 1,
+    "color": "black",
+    "formality": "sport",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c011",
+    "name": "베이지 터틀넥",
+    "category": "top",
+    "warmth": 4,
+    "color": "beige",
+    "formality": "smart",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c012",
+    "name": "블랙 슬랙스",
+    "category": "bottom",
+    "warmth": 3,
+    "color": "black",
+    "formality": "smart",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c013",
+    "name": "블루 데님 팬츠",
+    "category": "bottom",
+    "warmth": 3,
+    "color": "blue",
+    "formality": "casual",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c014",
+    "name": "차콜 정장 바지",
+    "category": "bottom",
+    "warmth": 3,
+    "color": "charcoal",
+    "formality": "formal",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c015",
+    "name": "블랙 트레이닝 팬츠",
+    "category": "bottom",
+    "warmth": 2,
+    "color": "black",
+    "formality": "sport",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c016",
+    "name": "그레이 기모 조거 팬츠",
+    "category": "bottom",
+    "warmth": 4,
+    "color": "gray",
+    "formality": "casual",
+    "waterproof": false,
+    "status": "laundry"
+  },
+  {
+    "id": "c017",
+    "name": "브라운 첼시부츠",
+    "category": "shoes",
+    "warmth": 3,
+    "color": "brown",
+    "formality": "smart",
+    "waterproof": true,
+    "status": "available"
+  },
+  {
+    "id": "c018",
+    "name": "화이트 스니커즈",
+    "category": "shoes",
+    "warmth": 2,
+    "color": "white",
+    "formality": "casual",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c019",
+    "name": "블랙 러닝화",
+    "category": "shoes",
+    "warmth": 1,
+    "color": "black",
+    "formality": "sport",
+    "waterproof": false,
+    "status": "available"
+  },
+  {
+    "id": "c020",
+    "name": "그레이 머플러",
+    "category": "accessory",
+    "warmth": 4,
+    "color": "gray",
+    "formality": "casual",
+    "waterproof": false,
+    "status": "available"
+  }
+]
