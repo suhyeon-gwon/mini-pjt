@@ -60,6 +60,17 @@ def today() -> date:
         raise ValueError(f"TODAY_OVERRIDE 형식이 잘못됐습니다: {override!r}. YYYY-MM-DD로 지정하세요.") from None
 
 
+def resolve_date(text: str) -> date | None:
+    """날짜 표현을 날짜로 바꾼다(기준은 today()). 빈 값·"오늘"·YYYY-MM-DD를 받고, 해석하지 못하면 None."""
+    text = (text or "").strip()
+    if text in ("", "오늘"):
+        return today()
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
 def weather_mode() -> str:
     """날씨 모드(live|fixture). WEATHER_MODE가 없으면 live다. 허용값 검사는 weather.py가 한다."""
     return os.environ.get("WEATHER_MODE", "live").strip().lower() or "live"
