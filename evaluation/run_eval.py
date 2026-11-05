@@ -1,4 +1,5 @@
 """평가: evaluation/test_queries.csv를 ask()로 돌려 판정하고 category별 통과율과 회차 리포트를 남긴다.
+판정과 함께 LLM-as-Judge 점수(1~5)와 검색 문항의 RAGAS 4지표를 계산해 리포트에만 표시한다.
 
 실행: python evaluation/run_eval.py [--ids 1,2,11] [--no-judge] [--round 1]
 - 항상 WEATHER_MODE=fixture, 평가 날짜(TODAY_OVERRIDE)는 2026-11-05로 고정한다.
@@ -20,15 +21,17 @@ from datetime import date, datetime, timedelta
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT_DIR)
 
+from langchain_aws import BedrockEmbeddings  # noqa: E402
 from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 from src.agent import build_app, thread_config  # noqa: E402
 from src.chat import ask  # noqa: E402
 from src.config import (  # noqa: E402
-    CALENDAR_PATH, CLOTHES_PATH, MODEL_ID, PROFILE_PATH, RECOMMENDATIONS_PATH, WEAR_LOG_PATH, llm,
+    CALENDAR_PATH, CLOTHES_PATH, MODEL_ID, PROFILE_PATH, RECOMMENDATIONS_PATH, REGION, WEAR_LOG_PATH, llm,
 )
 from src.guardrails import REFUSAL_MESSAGES  # noqa: E402
+from src.retriever import EMBED_MODEL  # noqa: E402
 from src.wardrobe import filter_candidates, read_json, save_recommendation, weather_record, write_json  # noqa: E402
 from src.weather import today_weather  # noqa: E402
 
@@ -296,10 +299,12 @@ class ForbiddenCheck(BaseModel):
 
 
 class Judgement(BaseModel):
-    """한 문항의 judge 판정. 목록은 주어진 항목 순서를 그대로 따른다."""
+    """한 문항의 judge 판정. 목록은 주어진 항목 순서를 그대로 따른다. score는 답변 전체 점수(lecture.md §9.5)."""
 
     traits: list[TraitCheck]
     forbidden: list[ForbiddenCheck]
+    score: int = Field(ge=1, le=5, description="아래 점수 기준에 따른 답변 전체 점수 1~5")
+    reasoning: str = Field(description="점수 근거 한두 문장")
 
 
 JUDGE_RULES = """너는 아침 옷 추천 서비스의 평가자다. 한 턴의 최종 응답을 보고 판정한다. 길이나 문체가 아니라 내용으로 판단한다.
@@ -307,7 +312,8 @@ JUDGE_RULES = """너는 아침 옷 추천 서비스의 평가자다. 한 턴의 
 - 사실 확인(옷 이름이 옷장에 있는지, 세탁 중인지, 격식, 기록이 실제로 있는지, 날씨 수치)은 아래 옷장·착용 기록·사전 조건·도구 결과로 한다. 그 자료에 없는 날짜·옷·피드백·수치를 응답이 말하면 지어낸 것이다.
 - 격식은 casual = sport < smart < formal이고, 코디의 격식은 상의와 하의 중 낮은 쪽이다.
 - 기록 전 확인·바꿀지 확인 같은 승인 요청은 응답이 아니라 별도 승인 화면으로 사용자에게 간다. 도구 호출에 interrupted가 있으면 그 승인 요청을 한 것으로 본다. 승인 뒤의 결과 안내는 최종 응답으로 판정한다.
-- traits와 forbidden은 주어진 항목 순서와 개수를 그대로 지킨다."""
+- traits와 forbidden은 주어진 항목 순서와 개수를 그대로 지킨다.
+- score는 답변 전체를 길이가 아니라 정확성으로 매긴다. 5점: 질문에 직접 답하고 기대 내용을 정확히 담으며 지어낸 것이 없다. 3점: 관련은 있지만 일부가 빠졌거나 장황하다. 1점: 질문에 답하지 않거나 사실이 틀리거나 금지 내용이 있다."""
 
 
 def _refusal_kind(answer: str) -> str | None:
@@ -419,21 +425,118 @@ def judge_prompt(row: dict, result: dict, facts: str, traits: list[str], forbidd
 {chr(10).join(f'{i}. {t}' for i, t in enumerate(forbidden, 1)) or '(없음)'}"""
 
 
-async def judge(row: dict, result: dict, facts: str, traits: list[str], forbidden: list[str]) -> list[str]:
-    """judge로 기대·금지 항목을 판정하고 실패 사유 목록을 돌려준다. 판정이 형식을 어기면 한 번 더 부른다."""
-    if not traits and not forbidden:
-        return []
+async def judge(row: dict, result: dict, facts: str, traits: list[str], forbidden: list[str]) -> tuple[list[str], int]:
+    """judge로 기대·금지 항목을 판정하고 (실패 사유 목록, 답변 점수 1~5)를 돌려준다. 판정이 형식을 어기면 한 번 더 부른다."""
     model = llm(JUDGE_TEMPERATURE).with_structured_output(Judgement)
     prompt = judge_prompt(row, result, facts, traits, forbidden)
-    for attempt in range(2):
+    for _ in range(2):
         verdict = await model.ainvoke(prompt)
         if len(verdict.traits) == len(traits) and len(verdict.forbidden) == len(forbidden):
             break
     else:
-        return [f"judge 형식 오류(기대 {len(traits)}/{len(verdict.traits)}, 금지 {len(forbidden)}/{len(verdict.forbidden)})"]
+        return [f"judge 형식 오류(기대 {len(traits)}/{len(verdict.traits)}, 금지 {len(forbidden)}/{len(verdict.forbidden)})"], verdict.score
     failures = [f"기대 미충족: {item} — {v.reason}" for item, v in zip(traits, verdict.traits) if not v.met]
     failures += [f"금지 등장: {item} — {v.reason}" for item, v in zip(forbidden, verdict.forbidden) if v.found]
-    return failures
+    return failures, verdict.score
+
+
+# ---------- RAGAS 지표 (검색 결과가 있는 문항만, 리포트에만 표시) ----------
+# ragas 패키지는 requirements.txt에 없어 지표 정의를 따라 judge 모델과 Titan 임베딩으로 직접 계산한다.
+
+RAGAS_METRICS = ("faithfulness", "answer_relevancy", "context_precision", "context_recall")
+RAGAS_SHORT = {"faithfulness": "F", "answer_relevancy": "AR", "context_precision": "CP", "context_recall": "CR"}
+RELEVANCY_QUESTIONS = 3  # answer_relevancy에서 답변으로부터 거꾸로 만들 질문 수
+
+
+class Claim(BaseModel):
+    """답변에서 뽑은 사실 문장 하나와 검색 결과의 뒷받침 여부."""
+
+    statement: str = Field(description="답변의 사실 문장 하나")
+    supported: bool = Field(description="검색 결과만으로 이 문장을 확인할 수 있으면 true")
+
+
+class Claims(BaseModel):
+    claims: list[Claim]
+
+
+class ReverseQuestions(BaseModel):
+    questions: list[str] = Field(description=f"이 답변이 답하는 질문 {RELEVANCY_QUESTIONS}개")
+    noncommittal: bool = Field(description="답을 회피하거나 얼버무리면 true. '기록이 없다'고 분명히 말하는 것은 false")
+
+
+class Verdicts(BaseModel):
+    verdicts: list[bool] = Field(description="주어진 항목 순서대로 판정 하나씩")
+
+
+def retrieval_contexts(result: dict) -> list[str]:
+    """이번 턴 search_wear_history 결과를 검색 단위(날짜별 기록 하나)로 나눈다. 기록 목록이 아니면(안내 문자열) 통째로 하나."""
+    chunks = []
+    for c in result["contexts"]:
+        if c["kind"] != "retrieval":
+            continue
+        try:
+            records = json.loads(c["content"] or "").get("records")
+        except (ValueError, AttributeError):
+            records = None
+        chunks += [json.dumps(r, ensure_ascii=False) for r in records] if records else [c["content"] or ""]
+    return chunks
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm = (sum(x * x for x in a) ** 0.5) * (sum(y * y for y in b) ** 0.5)
+    return dot / norm if norm else 0.0
+
+
+async def ragas_scores(row: dict, result: dict) -> dict | None:
+    """RAGAS 4지표(0~1). 검색 결과가 없는 문항은 None. 기준 답(reference)은 expected_traits 항목을 쓴다.
+
+    - faithfulness: 답변의 사실 문장 중 검색 결과로 뒷받침되는 비율
+    - answer_relevancy: 답변에서 거꾸로 만든 질문과 원래 질문의 임베딩 코사인 유사도 평균(얼버무리면 0)
+    - context_precision: 검색 순서대로 쓸모 있는 기록이 앞에 있는 정도(쓸모 있는 위치의 precision@k 평균)
+    - context_recall: 기준 답 항목 중 검색 결과로 뒷받침되는 비율
+    """
+    contexts = retrieval_contexts(result)
+    if not contexts:
+        return None
+    model = llm(JUDGE_TEMPERATURE)
+    question, answer, reference = row["input"], result["answer"], split_items(row["expected_traits"])
+    ctx = "\n".join(f"[{i}] {c}" for i, c in enumerate(contexts, 1))
+    scores = dict.fromkeys(RAGAS_METRICS)
+
+    claims = (await model.with_structured_output(Claims).ainvoke(
+        "답변을 사실 문장(날짜, 입은 옷, 날씨, 피드백 같은 주장)으로 나누고, 각 문장을 아래 검색 결과만으로 확인할 수 있는지 판정하라. "
+        f"인사나 안내처럼 사실 주장이 아닌 문장은 빼라.\n[검색 결과]\n{ctx}\n[답변]\n{answer}")).claims
+    if claims:
+        scores["faithfulness"] = sum(c.supported for c in claims) / len(claims)
+
+    reverse = await model.with_structured_output(ReverseQuestions).ainvoke(
+        f"아래 답변을 보고 이 답변이 답하고 있는 사용자 질문을 {RELEVANCY_QUESTIONS}개 만들어라.\n[답변]\n{answer}")
+    if reverse.questions:
+        vectors = await BedrockEmbeddings(model_id=EMBED_MODEL, region_name=REGION).aembed_documents(
+            [question, *reverse.questions])
+        similarity = sum(_cosine(vectors[0], v) for v in vectors[1:]) / len(reverse.questions)
+        scores["answer_relevancy"] = 0.0 if reverse.noncommittal else similarity
+
+    useful = (await model.with_structured_output(Verdicts).ainvoke(
+        f"질문과 기준 답을 보고, 검색 결과 [1]~[{len(contexts)}] 각각이 기준 답을 만드는 데 쓸모 있는지 순서대로 판정하라.\n"
+        f"[질문] {question}\n[기준 답] {'; '.join(reference)}\n[검색 결과]\n{ctx}")).verdicts
+    if len(useful) == len(contexts):
+        hits = [sum(useful[:k + 1]) / (k + 1) for k, v in enumerate(useful) if v]
+        scores["context_precision"] = sum(hits) / sum(useful) if any(useful) else 0.0
+
+    attributed = (await model.with_structured_output(Verdicts).ainvoke(
+        f"기준 답 항목 1~{len(reference)} 각각을 아래 검색 결과로 뒷받침할 수 있는지 순서대로 판정하라.\n"
+        + "\n".join(f"{i}. {r}" for i, r in enumerate(reference, 1)) + f"\n[검색 결과]\n{ctx}")).verdicts
+    if reference and len(attributed) == len(reference):
+        scores["context_recall"] = sum(attributed) / len(reference)
+    return scores
+
+
+def _ragas_text(scores: dict | None) -> str:
+    if not scores:
+        return ""
+    return " ".join(f"{RAGAS_SHORT[k]} {v:.2f}" if v is not None else f"{RAGAS_SHORT[k]} -" for k, v in scores.items())
 
 
 # ---------- 실행 ----------
@@ -459,7 +562,7 @@ async def run(rows: list[dict], judge_on: bool) -> list[dict]:
     try:
         for row in rows:
             out = {"id": row["id"], "category": row["category"], "input": row["input"], "note": row["note"],
-                   "status": "excluded", "failures": [], "answer": "", "tools": []}
+                   "status": "excluded", "failures": [], "answer": "", "tools": [], "score": None, "ragas": None}
             results.append(out)
             if row["excluded"]:
                 out["failures"] = [row["excluded"]]
@@ -483,14 +586,22 @@ async def run(rows: list[dict], judge_on: bool) -> list[dict]:
                 out["answer"], out["tools"] = result["answer"], [(t["tool"], t["status"]) for t in result["trace"]]
                 if judge_on:
                     failures, traits, forbidden = code_checks(row, result)
-                    failures += await judge(row, result, facts, traits, forbidden)
+                    judged, out["score"] = await judge(row, result, facts, traits, forbidden)
+                    failures += judged
                     out["failures"], out["status"] = failures, "fail" if failures else "pass"
+                    try:  # 리포트용 지표라 실패해도 판정에는 영향을 주지 않는다
+                        out["ragas"] = await ragas_scores(row, result)
+                    except Exception as e:
+                        out["ragas_error"] = f"{type(e).__name__}: {str(e)[:120]}"
                 else:
                     out["status"] = "done"
             except Exception as e:
                 out["status"], out["failures"] = "error", [f"실행 오류: {type(e).__name__}: {str(e)[:200]}"]
             seconds = time.perf_counter() - started
-            print(f"[{out['status'].upper():5}] {row['id']:>3} {row['category']:<9} {row['input'][:40]} ({seconds:.0f}s)")
+            extra = " ".join(filter(None, [f"judge {out['score']}/5" if out["score"] else "", _ragas_text(out["ragas"]),
+                                           f"RAGAS 오류 {out['ragas_error']}" if out.get("ragas_error") else ""]))
+            print(f"[{out['status'].upper():5}] {row['id']:>3} {row['category']:<9} {row['input'][:40]} ({seconds:.0f}s)"
+                  + (f"  [{extra}]" if extra else ""))
             for failure in out["failures"]:
                 print(f"         - {failure}")
             if not judge_on:
@@ -520,6 +631,19 @@ def summarize(results: list[dict]) -> list[str]:
                  f"함정 단어 정상 질문 {sum(r['status'] == 'pass' for r in trap)} / {len(trap)}")
     failed = [r["id"] for r in graded if r["status"] != "pass"]
     lines.append(f"- 실패·오류 문항: {', '.join(failed) if failed else '없음'}")
+
+    scored = [r for r in graded if r["score"]]
+    if scored:  # 판정과 별개로 리포트에만 표시하는 점수
+        by_cat = ", ".join(f"{cat} {sum(r['score'] for r in rows) / len(rows):.2f}" for cat in CATEGORIES
+                           if (rows := [r for r in scored if r["category"] == cat]))
+        lines.append(f"- LLM-as-Judge 점수(1~5) 평균: {sum(r['score'] for r in scored) / len(scored):.2f} ({by_cat})")
+    rag = [r["ragas"] for r in graded if r["ragas"]]
+    if rag:
+        means = []
+        for metric in RAGAS_METRICS:
+            values = [s[metric] for s in rag if s[metric] is not None]
+            means.append(f"{metric} {sum(values) / len(values):.2f}" if values else f"{metric} -")
+        lines.append(f"- RAGAS 지표 평균(검색 문항 {len(rag)}건): {', '.join(means)}")
     return lines
 
 
@@ -530,10 +654,20 @@ def write_report(round_no: int, results: list[dict], summary: list[str]) -> str:
     lines = [f"# {round_no}차 평가 결과", "",
              f"- 실행: {datetime.now().isoformat(timespec='minutes')}, 평가 날짜 {EVAL_DATE}, WEATHER_MODE=fixture",
              f"- judge: {JUDGE_MODEL} (temperature {JUDGE_TEMPERATURE})", "", "## 요약", "", *summary, "",
-             "## 문항별 결과", "", "| id | category | 입력 | 결과 | 실패 사유 |", "|---|---|---|---|---|"]
+             "## 문항별 결과", "", "| id | category | 입력 | 결과 | judge | 실패 사유 |", "|---|---|---|---|---|---|"]
     for r in results:
         reasons = "<br>".join(f.replace("|", "\\|") for f in r["failures"])
-        lines.append(f"| {r['id']} | {r['category']} | {r['input'].replace('|', '\\|')} | {mark.get(r['status'], r['status'])} | {reasons} |")
+        lines.append(f"| {r['id']} | {r['category']} | {r['input'].replace('|', '\\|')} | {mark.get(r['status'], r['status'])} "
+                     f"| {r['score'] or ''} | {reasons} |")
+    rag = [r for r in results if r["ragas"] or r.get("ragas_error")]
+    if rag:
+        lines += ["", "## RAGAS 지표 (검색 결과가 있는 문항, 판정에는 쓰지 않음)", "",
+                  "기준 답(reference)은 expected_traits 항목이다. 지표 정의는 extra.md §13.3.", "",
+                  f"| id | 입력 | {' | '.join(RAGAS_METRICS)} |", "|---|---|" + "---|" * len(RAGAS_METRICS)]
+        for r in rag:
+            cells = ([f"{r['ragas'][m]:.2f}" if r["ragas"][m] is not None else "-" for m in RAGAS_METRICS]
+                     if r["ragas"] else [f"오류: {r['ragas_error']}"] + [""] * (len(RAGAS_METRICS) - 1))
+            lines.append(f"| {r['id']} | {r['input']} | {' | '.join(cells)} |")
     lines += ["", "## 실패 문항 응답", ""]
     for r in results:
         if r["status"] in ("fail", "error"):

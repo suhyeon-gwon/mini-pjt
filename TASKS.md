@@ -213,8 +213,8 @@ extra.md §15대로 이 단계에서 가장 먼저 한다.
 - 확인: 판정 없이 돌려 45건 응답이 모두 찍히고, `history` state가 §13.1 정의(30일 안 10건 이상, 비 온 날 2건, 젖은 신발 피드백 1건)를 만족하며, 끝난 뒤 `data/*.json`이 실행 전과 바이트 단위로 같다
 
 #### 12-2. 판정 (20분)
-- 할 일: expected_tools(`ask()` 반환의 `trace`, HITL은 `interrupted` 포함), forbidden 작은따옴표는 `answer` 문자열 검사, 나머지 forbidden·expected_traits는 judge(`with_structured_output`, temperature=0, 모델·파라미터 상수), 11번 문항의 auto 기록 별도 확인
-- 확인: 일부러 틀린 응답(우산 안내 누락)을 넣으면 2번 문항이 실패로, 정상 응답은 통과로 판정된다
+- 할 일: expected_tools(`ask()` 반환의 `trace`, HITL은 `interrupted` 포함), forbidden 작은따옴표는 `answer` 문자열 검사, 나머지 forbidden·expected_traits는 judge(`with_structured_output`, temperature=0, 모델·파라미터 상수), 11번 문항의 auto 기록 별도 확인. LLM-as-Judge 점수(1~5)와 검색 문항의 RAGAS 4지표(faithfulness, answer_relevancy, context_precision, context_recall, extra.md §13.3)를 계산해 콘솔·리포트에 표시(통과 판정에는 쓰지 않음)
+- 확인: 일부러 틀린 응답(우산 안내 누락)을 넣으면 2번 문항이 실패로, 정상 응답은 통과로 판정된다. 41·43·45번을 돌리면 문항별 judge 점수와 RAGAS 4지표, 평균이 찍힌다
 
 ### 묶음 13. 1차·2차 평가 (60분)
 

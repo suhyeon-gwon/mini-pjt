@@ -509,7 +509,16 @@ id,category,input,expected_traits,forbidden,expected_tools,note
   - 문항마다 백업해 둔 데이터에서 시작하되, 평가 날짜 이후의 착용·추천 기록(CLI로 시험한 흔적)은 빼고 시작한다. 그 위에 `calendar`(오늘 일정)와 `state`를 만든다. `history`는 만든 뒤 위 정의를 코드로 확인하고, 어긋나면 그 문항을 오류로 표시한다
   - 코드 판정을 더 한다: `expected_traits`·`forbidden`의 "정해진 거절 문구"는 `REFUSAL_MESSAGES` 문자열로 판정하고, `note`의 "X·Y 호출 없어야 함"은 `trace`에 그 도구가 없어야, "도구 호출 0회"는 `contexts`가 비어야 통과다. `note`에 `source=auto`가 있으면(11번) 오늘 착용 기록이 1번 후보와 같은 `auto` 기록인지 본다
   - judge에는 최종 응답과 함께 옷장, 착용 기록, 사전 조건, 이번 턴 도구 호출·결과를 사실 확인 자료로 넘긴다(지어낸 옷·기록 판정용). HITL 승인 요청은 응답이 아니라 승인 화면으로 가므로 `trace`에 `interrupted`가 있으면 확인 요청을 한 것으로 본다
-- 출력: category별 통과율과 실패 문항 목록을 콘솔에 찍고, 회차 결과를 `evaluation/round1_report.md`(1차), `evaluation/round2_report.md`(개선 후)로 남긴다. 리포트에는 실패 원인과 다음 회차에서 고칠 것을 적는다.
+- **LLM-as-Judge 점수**(lecture.md §9.5): 같은 judge 호출에서 항목 판정과 함께 답변 전체를 1~5점으로 매긴다(5점: 직접 답하고 기대 내용을 정확히 담고 지어낸 것이 없음, 3점: 관련은 있으나 일부 빠짐·장황, 1점: 답하지 않거나 틀리거나 금지 내용). 통과 판정에는 쓰지 않고, 문항별·category별 평균을 리포트에만 표시한다.
+- **RAGAS 지표**: 이번 턴에 검색 결과(`contexts`의 `kind: "retrieval"`, 곧 `search_wear_history`)가 있는 문항만 계산하고 리포트에만 표시한다(통과 판정에는 쓰지 않음). `ragas` 패키지는 requirements.txt에 없으므로 지표 정의를 따라 judge 모델(`temperature=0`, `with_structured_output`)과 Titan 임베딩으로 직접 계산한다. 검색 단위는 검색 결과의 날짜별 기록 하나이고(기록 목록이 아닌 안내 문자열이면 통째로 하나), 기준 답(reference)은 `expected_traits` 항목이다.
+  | 지표 | 계산 |
+  |---|---|
+  | `faithfulness` | 답변을 사실 문장으로 나눠, 검색 결과만으로 확인되는 문장의 비율 |
+  | `answer_relevancy` | 답변에서 거꾸로 만든 질문 3개와 원래 질문의 임베딩 코사인 유사도 평균. 답을 얼버무리면 0("기록이 없다"고 분명히 말하는 것은 얼버무림이 아님) |
+  | `context_precision` | 검색 순서대로 각 기록이 기준 답에 쓸모 있는지 판정해, 쓸모 있는 위치의 precision@k를 평균 |
+  | `context_recall` | 기준 답 항목 중 검색 결과로 뒷받침되는 비율 |
+  - stylist 추천처럼 근거가 검색 결과 말고 다른 도구(날씨·후보)에도 있는 문항은 `faithfulness`·`context_recall`이 낮게 나온다(검색 결과만 근거로 보기 때문). 회차 사이 비교용으로 본다.
+- 출력: category별 통과율과 실패 문항 목록, judge 점수 평균, RAGAS 지표 평균을 콘솔에 찍고, 회차 결과를 `evaluation/round1_report.md`(1차), `evaluation/round2_report.md`(개선 후)로 남긴다. 리포트에는 문항별 judge 점수와 RAGAS 표, 실패 원인과 다음 회차에서 고칠 것을 적는다.
 - 필수 컬럼이 비었거나 category가 4종이 아닌 행은 조용히 넘기지 말고 "채점 제외"로 따로 표시한다.
 
 ---

@@ -32,7 +32,7 @@ src/chat.py                    CLI 대화 진입점 (HITL 프롬프트), 한 턴
 data/                          clothes, wear_log, profile, calendar, recommendations JSON
 data/fixtures/                 평가·오프라인용 날씨 fixture (rainy, cold, mild, error)
 evaluation/test_queries.csv    인-아웃 세트
-evaluation/run_eval.py         자동 판정 스크립트
+evaluation/run_eval.py         자동 판정 스크립트 (통과 판정 + LLM-as-Judge 점수 + 검색 문항 RAGAS 지표)
 evaluation/round1_report.md    1차 자체 평가 결과
 evaluation/round2_report.md    2차 자체 평가 결과 (개선 후)
 logs/                          trace.jsonl, agent.jsonl, guard_audit.log
