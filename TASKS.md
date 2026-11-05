@@ -19,7 +19,7 @@
   - 단계 2. 나머지 Agent, HITL, 가드레일, 관측 (3시간 5분)
     - [x] 묶음 7. log_agent와 HITL 스모크 테스트 (55분)
     - [x] 묶음 8. HITL 프롬프트와 closet_agent (50분)
-    - [ ] 묶음 9. general_agent와 input_guard (40분)
+    - [x] 묶음 9. general_agent와 input_guard (40분)
     - [ ] 묶음 10. LoggingMiddleware와 FileTracer (40분)
   - 단계 3. 착용 기록 검색 (RAG) (55분)
     - [ ] 묶음 11. retriever와 search_wear_history (55분)

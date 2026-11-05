@@ -86,7 +86,7 @@ src/feedback.py      # 피드백 기록, 프로필 변경 제안값 계산
 src/retriever.py     # 착용 기록 검색(RAG): 검색 문서 생성, 색인 동기화, 조건 필터 + 하이브리드 검색
 src/config.py        # llm 팩토리, get_text, 경로 상수, WEATHER_MODE(live|fixture), 날짜 오버라이드, 상대 날짜 해석(resolve_date)
 src/guardrails.py    # input_guard, output_guard, REFUSAL_MESSAGES, 감사 로그
-src/middleware.py    # LoggingMiddleware (sync + async)
+src/middleware.py    # LoggingMiddleware, TextOnlyHistoryMiddleware (sync + async)
 src/tracer.py        # FileTracer (JSONL)
 src/chat.py          # CLI 대화 진입점 (HITL 프롬프트 포함), 한 턴 공통 처리 ask()
 data/                # clothes.json, wear_log.json, profile.json, calendar.json, recommendations.json
@@ -296,7 +296,7 @@ docstring은 lecture.md §6.3 규칙(무엇/언제/언제 아님/인자)을 따�
 | `stylist_agent` | 코디, 추천, 오늘 뭐 입지, 날씨(기온·비·바람), 일정에 맞는 옷, 특정 옷을 입어도 되는지 | get_today_weather, get_candidates, get_calendar, get_profile, list_clothes, search_wear_history | — |
 | `closet_agent` | 옷 추가, 옷 목록, 세탁, 옷 상태, 일정 추가 | list_clothes, add_clothing, update_status, add_event | — |
 | `log_agent` | 입은 옷, 착용 기록, 지난 기록 찾기(…때 뭐 입었지, 그 옷 입은 날 어땠지), 추웠다/더웠다 피드백, 추위 민감도, 선호 스타일 | get_recent_wear, get_recommendation, search_wear_history, get_profile, confirm_wear, record_feedback, update_profile | confirm_wear, update_profile |
-| `general_agent` | 인사, 잡담, 미세먼지·황사·자외선 등 기온·비·바람 밖의 날씨, 그 외(범위 밖 질문은 `off_topic` 문구로 답함, §11.1) | — | — |
+| `general_agent` | 인사, 잡담, 미세먼지·황사·자외선 등 기온·비·바람 밖의 날씨, 그 외(범위 밖 질문은 `off_topic` 문구로 답함, §11.1) | — (`TextOnlyHistoryMiddleware`로 핸드오프 도구 메시지를 뺀 대화 텍스트만 받는다. 도구 없는 Agent에 도구 메시지를 넘기면 Bedrock이 평문으로 바꿔 모델이 "Transferring back to supervisor"를 흉내 낸다) | — |
 
 ### 9.1 stylist_agent 출력 형식
 stylist_agent의 답은 Supervisor가 그대로 사용자에게 넘긴다(§9.2). 그래서 lecture.md §8.4의 "한 문단으로 정리해 보고하라" 대신 아래 형식으로 쓴다.

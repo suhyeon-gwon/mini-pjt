@@ -26,7 +26,7 @@ src/feedback.py                피드백 기록, 프로필 변경 제안값
 src/retriever.py               착용 기록 검색(RAG): 검색 문서 생성, 색인 동기화, 조건 필터 + 하이브리드 검색
 src/config.py                  llm 팩토리, get_text, 경로 상수, WEATHER_MODE, 날짜 오버라이드(TODAY_OVERRIDE, today()), 상대 날짜 해석
 src/guardrails.py              input_guard, output_guard, REFUSAL_MESSAGES, 감사 로그
-src/middleware.py              LoggingMiddleware
+src/middleware.py              LoggingMiddleware, TextOnlyHistoryMiddleware(도구 없는 general_agent에 대화 텍스트만 전달)
 src/tracer.py                  FileTracer (JSONL, 턴별 도구 호출·결과 수집)
 src/chat.py                    CLI 대화 진입점 (HITL 프롬프트), 한 턴 공통 처리 ask()
 data/                          clothes, wear_log, profile, calendar, recommendations JSON

@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+import os
 from contextlib import AsyncExitStack
+from datetime import date
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -11,7 +13,7 @@ from langgraph_supervisor.handoff import METADATA_KEY_IS_HANDOFF_BACK
 
 from src.agent import build_app, thread_config
 from src.config import CHECKPOINT_PATH, get_text, resolve_date, run_settings, today
-from src.guardrails import outfit_lines, output_guard
+from src.guardrails import REFUSAL_MESSAGES, input_guard, outfit_lines, output_guard
 from src.wardrobe import CATEGORIES, load_clothes, load_profile, save_recommendation, weather_record, write_wear
 from src.weather import today_weather
 
@@ -192,11 +194,15 @@ async def _finish_turn(app, config: dict) -> str:
 async def ask(app, question: str, config: dict, decide=None, on_progress=None) -> dict:
     """한 턴을 처리하고 {"answer", "contexts", "trace"}를 돌려준다.
 
+    먼저 input_guard로 검사해 막히면 Supervisor를 부르지 않고 정해진 거절 문구를 돌려준다.
     Supervisor를 stream_mode="updates"로 돌려 진행만 on_progress(한 줄 문자열)로 알린다.
     HITL interrupt가 오면 decide(요청)로 재개 값을 얻어 Command(resume=...)로 이어 간다(decide가 없으면 모두 거절).
     끝나면 _finish_turn()(stylist 원문 복원 → output_guard → 추천 기록·자동 기록)을 거친 응답을 돌려준다.
     contexts·trace는 FileTracer 연결 전까지 빈 리스트다.
     """
+    blocked = await input_guard(question)
+    if blocked:
+        return {"answer": REFUSAL_MESSAGES[blocked], "contexts": [], "trace": []}
     decide = decide or reject_all
     seen = _tool_call_ids((await app.aget_state(config)).values.get("messages", []))
     payload = {"messages": [HumanMessage(question)]}
@@ -217,31 +223,65 @@ async def ask(app, question: str, config: dict, decide=None, on_progress=None) -
     return {"answer": await _finish_turn(app, config), "contexts": [], "trace": []}
 
 
+COMMANDS = "사용할 수 있는 명령: /date YYYY-MM-DD (오늘 날짜 바꾸기, /date만 쓰면 시스템 날짜), /quit"
+
+
+def _set_today(arg: str) -> str | None:
+    """/date 인자로 TODAY_OVERRIDE를 바꾼다. 빈 값이면 지운다(시스템 날짜). 형식이 틀리면 안내 문자열."""
+    if not arg:
+        os.environ.pop("TODAY_OVERRIDE", None)
+        return None
+    try:
+        os.environ["TODAY_OVERRIDE"] = date.fromisoformat(arg).isoformat()
+    except ValueError:
+        return f"날짜 형식이 잘못됐습니다: {arg}. /date YYYY-MM-DD로 입력하세요."
+    return None
+
+
 async def main() -> None:
-    """CLI 대화 루프. 입력마다 ask()를 부르고 answer만 출력한다. /quit로 끝낸다."""
-    async with AsyncSqliteSaver.from_conn_string(CHECKPOINT_PATH) as checkpointer, AsyncExitStack() as stack:
-        print("MCP 서버를 시작하는 중...")
-        app = await build_app(checkpointer, run_settings(), stack)
-        print(f"오늘({today()}) 옷 추천 도우미입니다. \"오늘 뭐 입지?\"라고 물어보세요. 끝내려면 /quit")
-        while True:
-            try:
-                question = input("\n나> ").strip()
-            except (EOFError, KeyboardInterrupt):
-                break
-            if not question:
-                continue
-            if question == "/quit":
-                break
-            if question.startswith("/"):
-                print("사용할 수 있는 명령: /quit")
-                continue
-            try:
-                result = await ask(app, question, thread_config(), decide=cli_decide,
-                                   on_progress=lambda line: print(f"  {line}"))
-            except Exception as e:
-                print(f"\n처리 중 오류가 발생했습니다({type(e).__name__}). 다시 시도해 주세요.")
-                continue
-            print(f"\n{result['answer']}")
+    """CLI 대화 루프. 입력마다 ask()를 부르고 answer만 출력한다. /date로 오늘을 바꾸고 /quit로 끝낸다.
+
+    /date는 이 프로세스의 TODAY_OVERRIDE를 바꾸고 build_app()을 다시 불러 MCP 서버에도 반영한다(체크포인터는 그대로).
+    thread_id가 날짜를 담으므로 대화 스레드도 그날 것으로 바뀐다.
+    """
+    async with AsyncSqliteSaver.from_conn_string(CHECKPOINT_PATH) as checkpointer:
+        stack = AsyncExitStack()
+        try:
+            print("MCP 서버를 시작하는 중...")
+            app = await build_app(checkpointer, run_settings(), stack)
+            print(f"오늘({today()}) 옷 추천 도우미입니다. \"오늘 뭐 입지?\"라고 물어보세요. 끝내려면 /quit")
+            while True:
+                try:
+                    question = input("\n나> ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    break
+                if not question:
+                    continue
+                if question == "/quit":
+                    break
+                if question == "/date" or question.startswith("/date "):
+                    error = _set_today(question.removeprefix("/date").strip())
+                    if error:
+                        print(error)
+                        continue
+                    await stack.aclose()
+                    stack = AsyncExitStack()
+                    print("MCP 서버를 다시 시작하는 중...")
+                    app = await build_app(checkpointer, run_settings(), stack)
+                    print(f"오늘을 {today()}로 바꿨습니다.")
+                    continue
+                if question.startswith("/"):
+                    print(COMMANDS)
+                    continue
+                try:
+                    result = await ask(app, question, thread_config(), decide=cli_decide,
+                                       on_progress=lambda line: print(f"  {line}"))
+                except Exception as e:
+                    print(f"\n처리 중 오류가 발생했습니다({type(e).__name__}). 다시 시도해 주세요.")
+                    continue
+                print(f"\n{result['answer']}")
+        finally:
+            await stack.aclose()
 
 
 if __name__ == "__main__":

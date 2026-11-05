@@ -8,6 +8,8 @@ from langgraph_supervisor import create_supervisor
 from langgraph_supervisor.handoff import create_forward_message_tool
 
 from src.config import llm, today
+from src.guardrails import REFUSAL_MESSAGES
+from src.middleware import TextOnlyHistoryMiddleware
 from src.tools import HITL_TOOLS, open_tools, tools_for
 
 RECURSION_LIMIT = 25
@@ -75,13 +77,20 @@ CLOSET_PROMPT = """너는 옷장과 일정을 관리하는 closet_agent다. 옷 
 - 일정 추가: 날짜는 사용자가 말한 표현 그대로 넘기고, 제목(무슨 일정인지)이나 날짜가 빠졌으면 호출하지 말고 되묻는다. 저장된 날짜·시간·종류를 그대로 보여 준다.
 - 도구 결과의 실제 값으로만 안내한다. 담당 범위 밖 질문에는 "담당 범위가 아닙니다"라고만 답한다."""
 
+GENERAL_PROMPT = f"""너는 인사와 범위 밖 질문을 맡는 general_agent다. 도구는 없다.
+- 인사·잡담에는 한두 문장으로 짧고 친절하게 답하고, 할 수 있는 일(오늘 코디 추천, 옷장·일정 관리, 착용 기록·피드백)을 안내한다.
+- 옷·날씨(기온·비·바람)·일정과 관계없는 질문(미세먼지·황사·자외선·꽃가루 같은 다른 날씨 정보 포함)에는 정보를 지어내지 말고 아래 문장만 그대로 답한다.
+{REFUSAL_MESSAGES["off_topic"]}"""
+
 SUPERVISOR_PROMPT = """너는 아침 옷 추천 서비스의 작업 분배자(Supervisor)다. 직접 답하거나 되묻지 말고 항상 담당 Agent에게 맡긴다(정보가 빠진 요청도 담당 Agent가 되묻는다).
 [배분 기준]
 - 코디, 추천, 오늘 뭐 입지, 날씨(기온·비·바람), 일정에 맞는 옷, 특정 옷을 입어도 되는지, 앞선 추천에 대한 질문 → stylist_agent
 - 옷 추가, 옷 목록, 세탁, 옷 상태, 일정 추가 → closet_agent
 - 입은 옷("N번 입을게/입었어"), 착용 기록, 지난 착용 조회, 추웠다·더웠다 피드백, 추위 민감도, 선호 스타일, 지역 변경 → log_agent
+- 인사, 잡담, 미세먼지·황사·자외선 등 기온·비·바람 밖의 날씨, 그 밖의 모든 질문 → general_agent
 [규칙]
-- 하위 Agent가 답하면 요약하거나 고쳐 쓰지 말고 forward_message(from_agent=그 Agent 이름)로 원문을 그대로 전달하고 끝낸다."""
+- 피드백·기록과 추천이 섞인 질문("어제 좀 추웠어. 오늘은 뭐 입지?")은 log_agent에게 먼저, 그다음 stylist_agent에게 맡긴다.
+- 하위 Agent가 답하면 요약하거나 고쳐 쓰지 말고 forward_message(from_agent=마지막으로 답한 Agent 이름)로 원문을 그대로 전달하고 끝낸다. 복합 질문은 마지막 stylist_agent 답을 전달한다."""
 
 
 def thread_config(user_id: str = "me") -> dict:
@@ -123,8 +132,15 @@ async def build_app(checkpointer, settings: dict, stack: AsyncExitStack):
         ],
         name="log_agent",
     )
+    general = create_agent(
+        model=llm(0),
+        tools=[],
+        system_prompt=GENERAL_PROMPT,
+        middleware=[ToolCallLimitMiddleware(thread_limit=TOOL_CALL_LIMIT), TextOnlyHistoryMiddleware()],
+        name="general_agent",
+    )
     supervisor = create_supervisor(
-        [stylist, closet, log],
+        [stylist, closet, log, general],
         model=llm(0),
         prompt=SUPERVISOR_PROMPT,
         tools=[create_forward_message_tool("supervisor")],
