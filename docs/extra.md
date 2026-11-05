@@ -86,7 +86,7 @@ src/feedback.py      # 피드백 기록, 프로필 변경 제안값 계산
 src/retriever.py     # 착용 기록 검색(RAG): 검색 문서 생성, 색인 동기화, 조건 필터 + 하이브리드 검색
 src/config.py        # llm 팩토리, get_text, 경로 상수, WEATHER_MODE(live|fixture), 날짜 오버라이드, 상대 날짜 해석(resolve_date)
 src/guardrails.py    # input_guard, output_guard, REFUSAL_MESSAGES, 감사 로그
-src/middleware.py    # LoggingMiddleware, TextOnlyHistoryMiddleware (sync + async)
+src/middleware.py    # LoggingMiddleware, TextOnlyHistoryMiddleware, ToolFirstMiddleware (sync + async)
 src/tracer.py        # FileTracer (JSONL)
 src/chat.py          # CLI 대화 진입점 (HITL 프롬프트 포함), 한 턴 공통 처리 ask()
 data/                # clothes.json, wear_log.json, profile.json, calendar.json, recommendations.json
@@ -289,7 +289,7 @@ docstring은 lecture.md §6.3 규칙(무엇/언제/언제 아님/인자)을 따�
 
 ## 9. Agent
 
-모든 하위 Agent는 `create_agent(..., name=...)`로 만들고 미들웨어 `[ToolCallLimitMiddleware(thread_limit=10), (HITL), LoggingMiddleware]`를 이 순서로 붙인다(lecture.md §7.11). 시스템 프롬프트는 5줄 이내로 쓰고(단 `stylist_agent`는 §9.1 규칙을 담아야 하므로 예외로 한다), 범위 밖 질문에는 "담당 범위가 아닙니다"라고만 답하게 한다(lecture.md §8.2). 단 `general_agent`는 `off_topic` 문구로 답한다(§11.1).
+모든 하위 Agent는 `create_agent(..., name=...)`로 만들고 미들웨어 `[ToolCallLimitMiddleware(thread_limit=10), (ToolFirstMiddleware), (HITL), LoggingMiddleware]`를 이 순서로 붙인다(lecture.md §7.11). `ToolFirstMiddleware`는 실행 도구를 가진 `closet_agent`·`log_agent`에만 붙인다. Supervisor(`output_mode="last_message"`) 대화 기록에는 하위 Agent의 최종 답만 남고 도구 호출은 빠지므로, 모델이 이전 턴과 핸드오프 메시지("Transferring back to supervisor")를 흉내 내 도구 없이 "입을 수 있음으로 바꿨습니다"라고 답할 수 있다. 그래서 모델 입력에서 핸드오프 도구 호출·결과를 빼고(State는 그대로), 이번 요청에서 자기 도구를 한 번도 부르지 않고 최종 답을 내면 안내 메시지를 붙여 모델을 한 번 더 부른다(요청당 한 번, 되묻는 답이면 같은 답을 다시 쓴다). 시스템 프롬프트는 5줄 이내로 쓰고(단 `stylist_agent`는 §9.1 규칙을 담아야 하므로 예외로 한다), 범위 밖 질문에는 "담당 범위가 아닙니다"라고만 답하게 한다(lecture.md §8.2). 단 `general_agent`는 `off_topic` 문구로 답한다(§11.1).
 
 | Agent | 담당 (Supervisor 배분 기준 명사) | 도구 | HITL |
 |---|---|---|---|

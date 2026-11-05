@@ -20,7 +20,7 @@
     - [x] 묶음 7. log_agent와 HITL 스모크 테스트 (55분)
     - [x] 묶음 8. HITL 프롬프트와 closet_agent (50분)
     - [x] 묶음 9. general_agent와 input_guard (40분)
-    - [ ] 묶음 10. LoggingMiddleware와 FileTracer (40분)
+    - [x] 묶음 10. LoggingMiddleware와 FileTracer (40분)
   - 단계 3. 착용 기록 검색 (RAG) (55분)
     - [ ] 묶음 11. retriever와 search_wear_history (55분)
   - 단계 4. 평가와 마무리 (2시간 15분)
@@ -139,7 +139,7 @@ extra.md §15대로 이 단계에서 가장 먼저 한다.
 
 #### 8-2. 옷장·일정 도구와 `closet_agent` (30분)
 - 할 일: `list_clothes`, `add_clothing`(id 발급 `c###`, 중복 이름 안내, 저장값 되보여줌), `update_status`(없는 id면 비슷한 이름 안내), `add_event`(resolve_date, 저장한 날짜·시간·종류 되보여줌). closet_agent 프롬프트(5줄 이내, 범위 밖은 "담당 범위가 아닙니다"), Supervisor 배분 명사 추가. `list_clothes`는 stylist에도 붙여 특정 옷 지목("빨간 패딩 입어도 돼?")을 확인하게 한다
-- 확인: CLI에서 "이번 주 토요일 저녁 7시에 데이트 일정 추가해줘"가 calendar.json에 2026-11-07로 저장되고, "네이비 니트 세탁 넣었어"가 반영되며, 같은 이름 옷 추가는 중복 안내만 하고 파일을 바꾸지 않는다
+- 확인: CLI에서 "이번 주 토요일 저녁 7시에 데이트 일정 추가해줘"가 calendar.json에 2026-11-07로 저장되고, "네이비 니트 세탁 넣었어"와 같은 스레드의 "네이비 니트 세탁 다 했어"가 각각 laundry·available로 반영되며, 같은 이름 옷 추가는 중복 안내만 하고 파일을 바꾸지 않는다
 
 ### 묶음 9. general_agent와 input_guard (40분)
 
@@ -154,7 +154,7 @@ extra.md §15대로 이 단계에서 가장 먼저 한다.
 ### 묶음 10. LoggingMiddleware와 FileTracer (40분)
 
 #### 10-1. `LoggingMiddleware` (15분)
-- 할 일: `middleware.py`에 before/after_model + `awrap_model_call`(sync·async 모두), 입력 미리보기·도구 호출 결정·토큰 수를 `logs/agent.jsonl`로. 모든 하위 Agent에 `[ToolCallLimit, (HITL), Logging]` 순서로 붙이기
+- 할 일: `middleware.py`에 before/after_model + `awrap_model_call`(sync·async 모두), 입력 미리보기·도구 호출 결정·토큰 수를 `logs/agent.jsonl`로. 모든 하위 Agent에 `[ToolCallLimit, (ToolFirst), (HITL), Logging]` 순서로 붙이기(ToolFirst는 closet·log만, extra.md §9)
 - 확인: 추천 한 번 뒤 `agent.jsonl`에 stylist_agent의 도구 호출 결정과 토큰 수 줄이 생긴다
 
 #### 10-2. `FileTracer` (25분)

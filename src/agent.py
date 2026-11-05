@@ -9,8 +9,8 @@ from langgraph_supervisor.handoff import create_forward_message_tool
 
 from src.config import llm, today
 from src.guardrails import REFUSAL_MESSAGES
-from src.middleware import TextOnlyHistoryMiddleware
-from src.tools import HITL_TOOLS, open_tools, tools_for
+from src.middleware import LoggingMiddleware, TextOnlyHistoryMiddleware, ToolFirstMiddleware
+from src.tools import AGENT_TOOLS, HITL_TOOLS, open_tools, tools_for
 
 RECURSION_LIMIT = 25
 TOOL_CALL_LIMIT = 10
@@ -73,7 +73,8 @@ EDIT_NOTICE = "사용자가 승인 단계에서 값을 수정해 실행했습니
 
 CLOSET_PROMPT = """너는 옷장과 일정을 관리하는 closet_agent다. 옷 추가, 옷 목록, 세탁 상태 변경, 캘린더 일정 추가만 담당한다.
 - 옷 추가: 종류·두께(1~5)·색(영문 소문자)·격식·방수는 이름에서 추정해 add_clothing을 호출하고, 저장된 값을 그대로 보여 주며 틀리면 알려 달라고 한다.
-- 세탁 상태: id를 모르면 list_clothes로 이름에 맞는 옷의 id를 찾은 뒤 update_status를 호출한다.
+- 세탁 상태: "세탁 넣었어/빨래통에 넣었어"는 laundry, "세탁 다 했어/빨래 끝났어/다 말랐어"는 available이다. id를 모르면 list_clothes로 이름에 맞는 옷의 id를 찾은 뒤 update_status를 호출한다.
+- 요청마다 이번에 도구를 새로 호출하고 그 결과로만 답한다. 앞선 대화에서 같은 옷을 다뤘어도 "바꿨다", "추가했다", "저장했다"는 이번에 호출한 도구 결과가 있을 때만 말한다.
 - 일정 추가: 날짜는 사용자가 말한 표현 그대로 넘기고, 제목(무슨 일정인지)이나 날짜가 빠졌으면 호출하지 말고 되묻는다. 저장된 날짜·시간·종류를 그대로 보여 준다.
 - 도구 결과의 실제 값으로만 안내한다. 담당 범위 밖 질문에는 "담당 범위가 아닙니다"라고만 답한다."""
 
@@ -109,14 +110,15 @@ async def build_app(checkpointer, settings: dict, stack: AsyncExitStack):
         model=llm(STYLIST_TEMPERATURE),
         tools=tools_for("stylist_agent", tools),
         system_prompt=STYLIST_PROMPT,
-        middleware=[ToolCallLimitMiddleware(thread_limit=TOOL_CALL_LIMIT)],
+        middleware=[ToolCallLimitMiddleware(thread_limit=TOOL_CALL_LIMIT), LoggingMiddleware("stylist_agent")],
         name="stylist_agent",
     )
     closet = create_agent(
         model=llm(0),
         tools=tools_for("closet_agent", tools),
         system_prompt=CLOSET_PROMPT,
-        middleware=[ToolCallLimitMiddleware(thread_limit=TOOL_CALL_LIMIT)],
+        middleware=[ToolCallLimitMiddleware(thread_limit=TOOL_CALL_LIMIT),
+                    ToolFirstMiddleware(AGENT_TOOLS["closet_agent"]), LoggingMiddleware("closet_agent")],
         name="closet_agent",
     )
     log = create_agent(
@@ -125,10 +127,12 @@ async def build_app(checkpointer, settings: dict, stack: AsyncExitStack):
         system_prompt=LOG_PROMPT,
         middleware=[
             ToolCallLimitMiddleware(thread_limit=TOOL_CALL_LIMIT),
+            ToolFirstMiddleware(AGENT_TOOLS["log_agent"]),
             HumanInTheLoopMiddleware(
                 interrupt_on={name: {"allowed_decisions": ["approve", "edit", "reject"]} for name in HITL_TOOLS},
                 edit_notice=EDIT_NOTICE,
             ),
+            LoggingMiddleware("log_agent"),
         ],
         name="log_agent",
     )
@@ -136,7 +140,8 @@ async def build_app(checkpointer, settings: dict, stack: AsyncExitStack):
         model=llm(0),
         tools=[],
         system_prompt=GENERAL_PROMPT,
-        middleware=[ToolCallLimitMiddleware(thread_limit=TOOL_CALL_LIMIT), TextOnlyHistoryMiddleware()],
+        middleware=[ToolCallLimitMiddleware(thread_limit=TOOL_CALL_LIMIT), TextOnlyHistoryMiddleware(),
+                    LoggingMiddleware("general_agent")],
         name="general_agent",
     )
     supervisor = create_supervisor(

@@ -14,6 +14,8 @@ from langgraph_supervisor.handoff import METADATA_KEY_IS_HANDOFF_BACK
 from src.agent import build_app, thread_config
 from src.config import CHECKPOINT_PATH, get_text, resolve_date, run_settings, today
 from src.guardrails import REFUSAL_MESSAGES, input_guard, outfit_lines, output_guard
+from src.tools import AGENT_TOOLS
+from src.tracer import FileTracer
 from src.wardrobe import CATEGORIES, load_clothes, load_profile, save_recommendation, weather_record, write_wear
 from src.weather import today_weather
 
@@ -198,17 +200,20 @@ async def ask(app, question: str, config: dict, decide=None, on_progress=None) -
     Supervisor를 stream_mode="updates"로 돌려 진행만 on_progress(한 줄 문자열)로 알린다.
     HITL interrupt가 오면 decide(요청)로 재개 값을 얻어 Command(resume=...)로 이어 간다(decide가 없으면 모두 거절).
     끝나면 _finish_turn()(stylist 원문 복원 → output_guard → 추천 기록·자동 기록)을 거친 응답을 돌려준다.
-    contexts·trace는 FileTracer 연결 전까지 빈 리스트다.
+    contexts·trace는 이번 턴의 FileTracer가 모은 도구 이벤트로 만든다(입력에서 막히면 빈 리스트).
     """
     blocked = await input_guard(question)
     if blocked:
         return {"answer": REFUSAL_MESSAGES[blocked], "contexts": [], "trace": []}
     decide = decide or reject_all
+    tracer = FileTracer(config.get("configurable", {}).get("thread_id"))
+    tracer.start_turn(question)
+    run_config = {**config, "callbacks": [tracer]}
     seen = _tool_call_ids((await app.aget_state(config)).values.get("messages", []))
     payload = {"messages": [HumanMessage(question)]}
     for attempt in range(MAX_RESUMES + 1):
         interrupts = []
-        async for event in app.astream(payload, config, stream_mode="updates"):
+        async for event in app.astream(payload, run_config, stream_mode="updates"):
             for node, update in event.items():
                 if node == "__interrupt__":
                     interrupts.extend(update)
@@ -219,8 +224,15 @@ async def ask(app, question: str, config: dict, decide=None, on_progress=None) -
         if not interrupts:
             break
         request = interrupts[0].value
+        for action in request["action_requests"]:
+            tracer.add_interrupted(_hitl_agent(action["name"]), action["name"], action["args"])
         payload = Command(resume=decide(request) if attempt < MAX_RESUMES else reject_all(request))
-    return {"answer": await _finish_turn(app, config), "contexts": [], "trace": []}
+    return {"answer": await _finish_turn(app, config), "contexts": tracer.contexts(), "trace": tracer.trace()}
+
+
+def _hitl_agent(tool: str) -> str:
+    """HITL로 멈춘 도구를 가진 Agent 이름."""
+    return next((agent for agent, names in AGENT_TOOLS.items() if tool in names), "unknown")
 
 
 COMMANDS = "사용할 수 있는 명령: /date YYYY-MM-DD (오늘 날짜 바꾸기, /date만 쓰면 시스템 날짜), /quit"

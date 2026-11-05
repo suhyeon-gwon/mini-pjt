@@ -106,34 +106,5 @@
       "rain": false
     },
     "feedback": []
-  },
-  {
-    "date": "2026-11-05",
-    "item_ids": [
-      "c009",
-      "c015",
-      "c001",
-      "c018"
-    ],
-    "source": "confirmed",
-    "weather": {
-      "am_feels": 12.0,
-      "day_feels": 18.5,
-      "pm_feels": 13.0,
-      "range": 11.0,
-      "rain": false
-    },
-    "feedback": [
-      {
-        "text": "추워",
-        "direction": "cold",
-        "at": "2026-11-05T11:29:29"
-      },
-      {
-        "text": "추워",
-        "direction": "cold",
-        "at": "2026-11-05T11:32:57"
-      }
-    ]
   }
 ]

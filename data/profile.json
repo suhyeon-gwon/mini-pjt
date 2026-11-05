@@ -3,7 +3,7 @@
   "region": "서울 종로구",
   "nx": 60,
   "ny": 127,
-  "cold_sensitivity": 1,
+  "cold_sensitivity": 0,
   "preferred_styles": [
     "minimal",
     "smart casual"
