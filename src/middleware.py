@@ -102,8 +102,9 @@ class TextOnlyHistoryMiddleware(AgentMiddleware):
         return await handler(self._text_only(request))
 
 
-TOOL_FIRST_NOTICE = ("이번 요청에 아직 도구를 호출하지 않았습니다. 이전 대화의 답을 따라 하지 말고, 옷장·세탁 상태·일정·착용 기록·프로필을 "
-                     "바꾸거나 조회해야 하는 요청이면 지금 도구를 호출하고 그 결과로만 답하세요. 정보가 빠져 되묻는 답이었다면 같은 답을 다시 쓰세요.")
+TOOL_FIRST_NOTICE = ("이번 요청에 아직 도구를 호출하지 않았습니다. 이전 대화의 답을 따라 하지 말고, 오늘 날씨·코디 추천이나 옷장·세탁 상태·일정·"
+                     "착용 기록·프로필을 바꾸거나 조회해야 하는 요청이면 지금 도구를 호출하고 그 결과로만 답하세요. "
+                     "도구 없이 답하는 요청(오늘이 아닌 날의 추천 안내, 앞선 추천에 대한 질문, 정보가 빠져 되묻는 답 등)이었다면 같은 답을 다시 쓰세요.")
 
 
 def _is_handoff(name: str) -> bool:
@@ -122,9 +123,11 @@ class ToolFirstMiddleware(AgentMiddleware):
     되돌림은 요청당 한 번이다(되묻는 답이면 모델이 같은 답을 다시 쓴다).
     """
 
-    def __init__(self, tool_names: list[str]):
+    def __init__(self, tool_names: list[str], only_if=None):
+        """only_if(답 텍스트) -> bool을 주면 그 답일 때만 되돌린다(예: stylist는 코디 줄이 있는 답만. 앞선 추천 설명은 도구 없이 답한다)."""
         super().__init__()
         self.tool_names = set(tool_names)
+        self.only_if = only_if
 
     @staticmethod
     def _without_handoffs(request):
@@ -145,6 +148,8 @@ class ToolFirstMiddleware(AgentMiddleware):
         messages = state["messages"]
         last = messages[-1] if messages else None
         if not isinstance(last, AIMessage) or last.tool_calls:
+            return None
+        if self.only_if is not None and not self.only_if(get_text(last)):
             return None
         # 이번 요청 = 마지막 사용자 발화(되돌림 안내 제외) 뒤
         start = max((i for i, m in enumerate(messages)

@@ -290,7 +290,7 @@ docstring은 lecture.md §6.3 규칙(무엇/언제/언제 아님/인자)을 따�
 
 ## 9. Agent
 
-모든 하위 Agent는 `create_agent(..., name=...)`로 만들고 미들웨어 `[ToolCallLimitMiddleware(thread_limit=10), (ToolFirstMiddleware), (HITL), LoggingMiddleware]`를 이 순서로 붙인다(lecture.md §7.11). `ToolFirstMiddleware`는 실행 도구를 가진 `closet_agent`·`log_agent`에만 붙인다. Supervisor(`output_mode="last_message"`) 대화 기록에는 하위 Agent의 최종 답만 남고 도구 호출은 빠지므로, 모델이 이전 턴과 핸드오프 메시지("Transferring back to supervisor")를 흉내 내 도구 없이 "입을 수 있음으로 바꿨습니다"라고 답할 수 있다. 그래서 모델 입력에서 핸드오프 도구 호출·결과를 빼고(State는 그대로), 이번 요청에서 자기 도구를 한 번도 부르지 않고 최종 답을 내면 안내 메시지를 붙여 모델을 한 번 더 부른다(요청당 한 번, 되묻는 답이면 같은 답을 다시 쓴다). 시스템 프롬프트는 5줄 이내로 쓰고(단 `stylist_agent`는 §9.1 규칙을 담아야 하므로 예외로 한다), 범위 밖 질문에는 "담당 범위가 아닙니다"라고만 답하게 한다(lecture.md §8.2). 단 `general_agent`는 `off_topic` 문구로 답한다(§11.1).
+모든 하위 Agent는 `create_agent(..., name=...)`로 만들고 미들웨어 `[ToolCallLimitMiddleware(thread_limit=10), (ToolFirstMiddleware), (HITL), LoggingMiddleware]`를 이 순서로 붙인다(lecture.md §7.11). `ToolFirstMiddleware`는 `closet_agent`·`log_agent`·`stylist_agent`에 붙인다(stylist는 답에 코디 줄이 있을 때만 되돌린다. "1번 이유 다시 말해줘"처럼 앞선 추천을 설명하는 답은 도구 없이 답하는 게 맞다. 긴 대화에서 stylist가 도구 없이 앞선 추천(다른 날씨)을 그대로 옮긴 사례가 있었다). Supervisor(`output_mode="last_message"`) 대화 기록에는 하위 Agent의 최종 답만 남고 도구 호출은 빠지므로, 모델이 이전 턴과 핸드오프 메시지("Transferring back to supervisor")를 흉내 내 도구 없이 "입을 수 있음으로 바꿨습니다"라고 답할 수 있다. 그래서 모델 입력에서 핸드오프 도구 호출·결과를 빼고(State는 그대로), 이번 요청에서 자기 도구를 한 번도 부르지 않고 최종 답을 내면 안내 메시지를 붙여 모델을 한 번 더 부른다(요청당 한 번, 되묻는 답이면 같은 답을 다시 쓴다). 시스템 프롬프트는 5줄 이내로 쓰고(단 `stylist_agent`는 §9.1 규칙을 담아야 하므로 예외로 한다), 범위 밖 질문에는 "담당 범위가 아닙니다"라고만 답하게 한다(lecture.md §8.2). 단 `general_agent`는 `off_topic` 문구로 답한다(§11.1).
 
 | Agent | 담당 (Supervisor 배분 기준 명사) | 도구 | HITL |
 |---|---|---|---|
@@ -334,6 +334,7 @@ stylist_agent의 답은 Supervisor가 그대로 사용자에게 넘긴다(§9.2)
 ### 9.2 Supervisor
 - `create_supervisor([stylist_agent, closet_agent, log_agent, general_agent], model=..., prompt=..., tools=[create_forward_message_tool("supervisor")], output_mode="last_message")` 후 `compile(checkpointer=AsyncSqliteSaver)`.
 - 배분 기준은 위 표의 명사로 적는다. 미세먼지처럼 기온·비·바람 밖의 날씨 질문은 `stylist_agent`가 아니라 `general_agent`로 보낸다(사용자가 `off_topic` 문구를 보게). 복합 질문("어제 좀 추웠어, 오늘은 뭐 입지?")은 `log_agent` → `stylist_agent` 순서로 처리한다.
+- **`forward_message`는 이번 요청의 답만 넘긴다**: 라이브러리 도구는 대화 전체에서 그 Agent의 마지막 답을 찾으므로, Supervisor가 맡기지 않고 바로 부르면 앞선 턴의 추천을 넘긴다(실제로 일어남). 그래서 `agent.py`에서 감싸, 그 Agent가 마지막 사용자 발화 뒤에 답하지 않았으면 넘기지 않고 "먼저 transfer_to_…로 맡기세요" 안내를 돌려준다.
 - **추천은 다시 쓰지 않는다**: stylist_agent가 답하면 Supervisor는 요약하거나 고쳐 쓰지 않고 `forward_message(from_agent="stylist_agent")`로 원문을 그대로 넘긴다. 복합 질문도 마지막 stylist 답을 넘긴다(앞선 결과는 stylist가 첫 줄에 적는다, §9.1). 옷 이름, 번호 형식, 마지막 안내 줄이 그대로 남아야 출력 가드레일과 추천 기록이 동작한다.
 - **코드 안전망**: Supervisor가 `forward_message`를 쓰지 않고 다시 썼을 때를 대비한다. `ask()`는 이번 턴의 마지막 stylist_agent 메시지에 후보 줄(`1)` …)이 있는데 최종 응답에 그 줄들이 그대로 없으면, stylist 메시지를 최종 응답으로 쓰고 같은 `id`로 체크포인트를 갱신한다(`aupdate_state`). 그다음 `output_guard`를 거친다.
 - 직접 답을 지어내지 않는다. 날씨와 옷 정보는 반드시 하위 Agent를 통해 확인한다.

@@ -1,14 +1,18 @@
 """메인 에이전트 그래프: 하위 Agent와 Supervisor를 조립한다(build_app)."""
 
 from contextlib import AsyncExitStack
+from typing import Annotated
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import HumanInTheLoopMiddleware, ToolCallLimitMiddleware
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 from langgraph_supervisor import create_supervisor
 from langgraph_supervisor.handoff import create_forward_message_tool
 
 from src.config import llm, today
-from src.guardrails import REFUSAL_MESSAGES
+from src.guardrails import REFUSAL_MESSAGES, outfit_lines
 from src.middleware import LoggingMiddleware, TextOnlyHistoryMiddleware, ToolFirstMiddleware
 from src.tools import AGENT_TOOLS, HITL_TOOLS, open_tools, tools_for
 
@@ -95,6 +99,25 @@ SUPERVISOR_PROMPT = """너는 아침 옷 추천 서비스의 작업 분배자(Su
 - 하위 Agent가 답하면 요약하거나 고쳐 쓰지 말고 forward_message(from_agent=마지막으로 답한 Agent 이름)로 원문을 그대로 전달하고 끝낸다. 복합 질문은 마지막 stylist_agent 답을 전달한다."""
 
 
+_library_forward = create_forward_message_tool("supervisor")
+
+
+@tool("forward_message", description=_library_forward.description)
+def forward_message(from_agent: str, state: Annotated[dict, InjectedState]):
+    """하위 Agent의 답을 그대로 사용자에게 넘긴다. 단, 그 Agent가 이번 요청(마지막 사용자 발화 뒤)에 답했을 때만.
+
+    라이브러리 도구는 대화 전체에서 그 Agent의 마지막 답을 찾으므로, Supervisor가 맡기지 않고 바로 부르면
+    앞선 턴의 추천(다른 날씨)을 이번 답처럼 넘긴다. 그때는 넘기지 않고 먼저 맡기라는 안내를 돌려준다.
+    """
+    messages = state["messages"]
+    start = max((i for i, m in enumerate(messages) if isinstance(m, HumanMessage)), default=-1)
+    answered = any(isinstance(m, AIMessage) and (m.name or "").lower() == from_agent.lower() for m in messages[start + 1:])
+    if not answered:
+        return (f"{from_agent}는 이번 요청에 아직 답하지 않았습니다. 앞선 답을 다시 넘기지 말고 "
+                f"transfer_to_{from_agent}로 먼저 맡긴 뒤 그 답을 forward_message로 넘기세요.")
+    return _library_forward.func(from_agent, state)
+
+
 def thread_config(user_id: str = "me") -> dict:
     """그날의 대화 스레드 설정. thread_id는 {user_id}:{오늘 YYYY-MM-DD}이고 반복 상한을 함께 둔다."""
     return {"configurable": {"thread_id": f"{user_id}:{today().isoformat()}"}, "recursion_limit": RECURSION_LIMIT}
@@ -111,7 +134,9 @@ async def build_app(checkpointer, settings: dict, stack: AsyncExitStack):
         model=llm(STYLIST_TEMPERATURE),
         tools=tools_for("stylist_agent", tools),
         system_prompt=STYLIST_PROMPT,
-        middleware=[ToolCallLimitMiddleware(thread_limit=TOOL_CALL_LIMIT), LoggingMiddleware("stylist_agent")],
+        middleware=[ToolCallLimitMiddleware(thread_limit=TOOL_CALL_LIMIT),
+                    ToolFirstMiddleware(AGENT_TOOLS["stylist_agent"], only_if=lambda text: bool(outfit_lines(text))),
+                    LoggingMiddleware("stylist_agent")],
         name="stylist_agent",
     )
     closet = create_agent(
@@ -149,7 +174,7 @@ async def build_app(checkpointer, settings: dict, stack: AsyncExitStack):
         [stylist, closet, log, general],
         model=llm(0),
         prompt=SUPERVISOR_PROMPT,
-        tools=[create_forward_message_tool("supervisor")],
+        tools=[forward_message],
         output_mode="last_message",
     )
     return supervisor.compile(checkpointer=checkpointer)
