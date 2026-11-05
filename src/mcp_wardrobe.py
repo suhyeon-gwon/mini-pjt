@@ -11,10 +11,12 @@ with contextlib.redirect_stderr(io.StringIO()):  # fastmcp가 불러오는 authl
     from fastmcp import FastMCP
 
 from src.config import resolve_date
-from src.wardrobe import events_on, filter_candidates, load_clothes, load_profile
+from src.wardrobe import events_on, filter_candidates, load_clothes, load_profile, load_wear_log
 from src.weather import today_weather
 
 mcp = FastMCP("wardrobe")
+
+DATE_HELP = '"오늘", "어제", "내일", "토요일", "이번 주 토요일", "다음 주 금요일", "11월 7일" 또는 YYYY-MM-DD'
 
 
 def _dump(data) -> str:
@@ -29,9 +31,10 @@ def _error(e: Exception) -> str:
 
 @mcp.tool()
 def get_candidates() -> str:
-    """오늘 날씨에 맞춰 옷장에서 고른 카테고리별 후보 옷을 조회한다(세탁 중인 옷은 빠져 있다).
+    """오늘 날씨에 맞춰 옷장에서 고른 카테고리별 후보 옷과, 비슷한 기온이었던 날(입은 옷, 피드백)을 조회한다.
 
-    오늘 옷을 추천할 때 쓴다. 코디는 반드시 이 결과 안의 옷으로만 짠다. note가 있으면 기준에 맞는 옷이 없어 범위를 넓혔다는 뜻이다.
+    오늘 옷을 추천할 때 쓴다. 코디는 반드시 이 결과 안의 옷으로만 짠다. 세탁 중인 옷은 빠져 있다.
+    note는 기준에 맞는 옷이 없어 범위를 넓혔다는 뜻이고, recently_worn은 최근에 입은 옷 표시, similar_days는 비슷한 기온의 날이다.
     다른 날의 코디나 옷장 전체 목록에는 쓰지 않는다(옷 목록은 list_clothes). 날씨 수치는 get_today_weather를 쓴다.
 
     Args:
@@ -41,26 +44,26 @@ def get_candidates() -> str:
         weather = today_weather()
         if isinstance(weather, str):
             return weather
-        return _dump(filter_candidates(weather, load_profile(), load_clothes()))
+        return _dump(filter_candidates(weather, load_profile(), load_clothes(), load_wear_log()))
     except Exception as e:
         return _error(e)
 
 
 @mcp.tool()
 def get_calendar(
-    date: Annotated[str, Field(description='"오늘" 또는 YYYY-MM-DD. 비우면 오늘', max_length=20)] = "",
+    date: Annotated[str, Field(description=DATE_HELP, max_length=20)] = "",
 ) -> str:
-    """내 캘린더에서 해당 날짜의 일정(제목, 종류, 시간)을 조회한다. 일정이 없으면 events가 빈 목록이다.
+    """내 캘린더에서 해당 날짜의 일정(제목, 종류, 시간)을 조회한다. 결과의 date는 코드가 해석한 날짜이고, 일정이 없으면 events가 빈 목록이다.
 
     오늘 옷을 추천하기 전에 오늘 일정(데이트, 운동, 격식 자리)을 확인할 때 쓴다. 특정 날짜의 일정을 물을 때도 쓴다.
-    일정을 추가할 때는 쓰지 않는다(add_event).
+    일정을 추가할 때는 쓰지 않는다(add_event). 날짜를 직접 계산하지 말고 사용자가 말한 표현을 그대로 넘긴다.
 
     Args:
-        date: "오늘" 또는 YYYY-MM-DD. 비우면 오늘.
+        date: 사용자가 말한 날짜 표현 그대로("오늘", "토요일", "다음 주 금요일", "11월 7일") 또는 YYYY-MM-DD. 비우면 오늘.
     """
     day = resolve_date(date)
     if day is None:
-        return f"에러: 날짜 '{date}'를 해석할 수 없습니다. \"오늘\" 또는 YYYY-MM-DD 형식(예: 2026-11-05)으로 다시 호출하세요."
+        return f"에러: 날짜 '{date}'를 해석할 수 없습니다. {DATE_HELP} 형식으로 다시 호출하세요."
     try:
         return _dump({"date": day.isoformat(), "events": events_on(day)})
     except Exception as e:

@@ -1,1 +1,110 @@
-[]
+[
+  {
+    "date": "2026-10-29",
+    "item_ids": [
+      "c001",
+      "c009",
+      "c013",
+      "c018"
+    ],
+    "source": "auto",
+    "weather": {
+      "am_feels": 12.5,
+      "day_feels": 17.0,
+      "pm_feels": 13.0,
+      "range": 7,
+      "rain": false
+    },
+    "feedback": [
+      {
+        "text": "저녁에 좀 추웠어",
+        "direction": "cold",
+        "at": "2026-10-29T21:10:00"
+      }
+    ]
+  },
+  {
+    "date": "2026-10-30",
+    "item_ids": [
+      "c003",
+      "c010",
+      "c015",
+      "c019"
+    ],
+    "source": "auto",
+    "weather": {
+      "am_feels": 15.0,
+      "day_feels": 21.0,
+      "pm_feels": 16.0,
+      "range": 9,
+      "rain": false
+    },
+    "feedback": []
+  },
+  {
+    "date": "2026-10-31",
+    "item_ids": [
+      "c002",
+      "c006",
+      "c013",
+      "c018"
+    ],
+    "source": "confirmed",
+    "weather": {
+      "am_feels": 14.0,
+      "day_feels": 16.0,
+      "pm_feels": 14.5,
+      "range": 4,
+      "rain": true
+    },
+    "feedback": [
+      {
+        "text": "비 와서 신발이 젖었어",
+        "direction": "ok",
+        "at": "2026-10-31T20:30:00"
+      }
+    ]
+  },
+  {
+    "date": "2026-11-02",
+    "item_ids": [
+      "c004",
+      "c011",
+      "c014",
+      "c017"
+    ],
+    "source": "auto",
+    "weather": {
+      "am_feels": 9.0,
+      "day_feels": 14.0,
+      "pm_feels": 10.0,
+      "range": 8,
+      "rain": false
+    },
+    "feedback": [
+      {
+        "text": "딱 좋았어",
+        "direction": "ok",
+        "at": "2026-11-02T22:00:00"
+      }
+    ]
+  },
+  {
+    "date": "2026-11-04",
+    "item_ids": [
+      "c007",
+      "c012",
+      "c002",
+      "c017"
+    ],
+    "source": "auto",
+    "weather": {
+      "am_feels": 11.0,
+      "day_feels": 18.0,
+      "pm_feels": 12.5,
+      "range": 10,
+      "rain": false
+    },
+    "feedback": []
+  }
+]

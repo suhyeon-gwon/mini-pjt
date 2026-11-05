@@ -5,9 +5,11 @@ import os
 import tempfile
 from datetime import date
 
-from src.config import CALENDAR_PATH, CLOTHES_PATH, PROFILE_PATH
+from src.config import CALENDAR_PATH, CLOTHES_PATH, PROFILE_PATH, WEAR_LOG_PATH
 
 CATEGORIES = ("top", "bottom", "outer", "shoes", "accessory")
+SIMILAR_FEELS = 2.0  # 비슷한 기온의 날: 출근·낮 체감온도 차이가 각각 이 이내
+SIMILAR_LIMIT = 3
 
 # 기준 온도 하한(이상) → 카테고리별 warmth 범위. outer None은 겉옷이 필요 없는 기온이다.
 TEMP_BANDS = [
@@ -54,6 +56,11 @@ def load_profile() -> dict:
     return read_json(PROFILE_PATH)
 
 
+def load_wear_log() -> list[dict]:
+    """착용 기록 전체(날짜별 입은 옷, 날씨 요약, 피드백)."""
+    return read_json(WEAR_LOG_PATH)
+
+
 def events_on(day: date) -> list[dict]:
     """해당 날짜의 캘린더 일정(시간순). 없으면 빈 목록."""
     events = [e for e in read_json(CALENDAR_PATH) if e["date"] == day.isoformat()]
@@ -68,20 +75,62 @@ def warmth_range(category: str, base_temp: float) -> tuple[int, int] | None:
     raise AssertionError("TEMP_BANDS의 마지막 하한은 -inf여야 한다")
 
 
-def _item_view(item: dict, umbrella: bool) -> dict:
-    """후보로 내보낼 옷 정보. 비 오는 날 방수 아우터·신발에는 rain_ok를 붙인다."""
+def similar_days(weather: dict, wear_log: list[dict], clothes: list[dict]) -> list[dict]:
+    """오늘과 출근·낮 체감온도가 각각 ±2℃ 안인 지난 날을 최근 순으로 최대 3개 찾는다(입은 옷 이름, 피드백 포함).
+
+    날씨 요약이 없거나 입은 옷이 없는 기록, 오늘 기록은 뺀다.
+    """
+    names = {c["id"]: c["name"] for c in clothes}
+    am, day = weather["segments"]["am"]["feels"], weather["segments"]["day"]["feels"]
+    found = [
+        e for e in wear_log
+        if e["date"] < weather["date"] and e.get("weather") and e.get("item_ids")
+        and abs(e["weather"]["am_feels"] - am) <= SIMILAR_FEELS
+        and abs(e["weather"]["day_feels"] - day) <= SIMILAR_FEELS
+    ]
+    found.sort(key=lambda e: e["date"], reverse=True)
+    return [
+        {
+            "date": e["date"],
+            "weather": e["weather"],
+            "items": [names.get(i, i) for i in e["item_ids"]],
+            "feedback": [{"text": f["text"], "direction": f["direction"]} for f in e.get("feedback", [])],
+        }
+        for e in found[:SIMILAR_LIMIT]
+    ]
+
+
+def recently_worn(wear_log: list[dict], today_iso: str, days: int) -> dict[str, int]:
+    """최근 days일 안(오늘 제외)에 입은 옷 id → 며칠 전에 입었는지(가장 최근 기준)."""
+    today_date = date.fromisoformat(today_iso)
+    worn = {}
+    for e in wear_log:
+        ago = (today_date - date.fromisoformat(e["date"])).days
+        if 1 <= ago <= days:
+            for item_id in e.get("item_ids", []):
+                worn[item_id] = min(ago, worn.get(item_id, ago))
+    return worn
+
+
+def _item_view(item: dict, umbrella: bool, worn: dict[str, int]) -> dict:
+    """후보로 내보낼 옷 정보. 비 오는 날 방수 아우터·신발에는 rain_ok, 최근 입은 옷에는 recently_worn을 붙인다."""
     view = {k: item[k] for k in ("id", "name", "warmth", "color", "formality", "waterproof")}
     if umbrella and item["waterproof"] and item["category"] in ("outer", "shoes"):
         view["rain_ok"] = True
+    if item["id"] in worn:
+        view["recently_worn"] = f"{worn[item['id']]}일 전"
     return view
 
 
-def filter_candidates(weather: dict, profile: dict, clothes: list[dict]) -> dict:
+def filter_candidates(weather: dict, profile: dict, clothes: list[dict], wear_log: list[dict] | None = None) -> dict:
     """오늘 날씨 요약과 프로필로 카테고리별 후보 옷을 고른다(extra.md §7).
 
     기준 온도 = 구간 체감온도 − 추위 민감도×2. top은 낮, outer는 출근, bottom은 둘의 평균을 쓴다.
     세탁 중인 옷은 빼고, layer면 top 범위를 1 낮추고, 후보가 0개면 범위를 넓혀 note에 밝힌다.
+    wear_log가 있으면 최근 입은 옷에 recently_worn을 표시하고(빼지 않는다) 비슷한 기온의 날을 붙인다.
     """
+    wear_log = wear_log or []
+    worn = recently_worn(wear_log, weather["date"], profile.get("avoid_recent_days", 3))
     sensitivity = profile.get("cold_sensitivity", 0)
     am = weather["segments"]["am"]["feels"] - sensitivity * 2
     day = weather["segments"]["day"]["feels"] - sensitivity * 2
@@ -116,9 +165,15 @@ def filter_candidates(weather: dict, profile: dict, clothes: list[dict]) -> dict
         else:
             picked = pool  # shoes·accessory는 warmth로 거르지 않는다
             note = ""
-        entry["items"] = [_item_view(c, flags.get("umbrella", False)) for c in picked]
+        entry["items"] = [_item_view(c, flags.get("umbrella", False), worn) for c in picked]
         if note:
             entry["note"] = note
         result[cat] = entry
 
-    return {"date": weather["date"], "cold_sensitivity": sensitivity, "flags": flags, "categories": result}
+    return {
+        "date": weather["date"],
+        "cold_sensitivity": sensitivity,
+        "flags": flags,
+        "categories": result,
+        "similar_days": similar_days(weather, wear_log, clothes),
+    }

@@ -1,7 +1,8 @@
 """공통 설정: 경로 상수, LLM 팩토리, 메시지 텍스트 헬퍼, 날짜·날씨 모드 설정."""
 
 import os
-from datetime import date
+import re
+from datetime import date, timedelta
 
 from dotenv import load_dotenv
 
@@ -33,6 +34,11 @@ REGION = "us-east-1"
 # 날씨 모드
 WEATHER_MODES = ("live", "fixture")
 WEATHER_FIXTURES = ("mild", "rainy", "cold", "error")
+
+# 상대 날짜 해석 (resolve_date)
+RELATIVE_DAYS = {"": 0, "오늘": 0, "어제": -1, "그제": -2, "그저께": -2, "내일": 1, "모레": 2}
+WEEKDAYS = "월화수목금토일"  # date.weekday() 순서
+WEEK_OFFSETS = {"이번주": 0, "다음주": 1, "지난주": -1, "저번주": -1}
 
 # MCP 서버에 env로 넘기는 실행 설정 (비밀 값은 넣지 않는다)
 SETTING_KEYS = ("WEATHER_MODE", "WEATHER_FIXTURE", "TODAY_OVERRIDE")
@@ -70,12 +76,30 @@ def today() -> date:
 
 
 def resolve_date(text: str) -> date | None:
-    """날짜 표현을 날짜로 바꾼다(기준은 today()). 빈 값·"오늘"·YYYY-MM-DD를 받고, 해석하지 못하면 None."""
-    text = (text or "").strip()
-    if text in ("", "오늘"):
-        return today()
+    """날짜 표현을 날짜로 바꾼다(기준은 today(), 한 주는 월요일 시작). 해석하지 못하면 None.
+
+    받는 표현: 빈 값(오늘), 오늘/어제/그제/그저께/내일/모레, X요일(오늘 포함 다가오는 날),
+    이번 주/다음 주/지난주/저번 주 X요일, M월 D일, M/D(올해), YYYY-MM-DD.
+    """
+    base = today()
+    text = re.sub(r"\s+", "", text or "")
+    if text in RELATIVE_DAYS:
+        return base + timedelta(days=RELATIVE_DAYS[text])
+
+    m = re.fullmatch(r"(이번주|다음주|지난주|저번주)?([월화수목금토일])요일", text)
+    if m:
+        target = WEEKDAYS.index(m.group(2))
+        if m.group(1) is None:
+            return base + timedelta(days=(target - base.weekday()) % 7)
+        monday = base - timedelta(days=base.weekday()) + timedelta(weeks=WEEK_OFFSETS[m.group(1)])
+        return monday + timedelta(days=target)
+
+    m = re.fullmatch(r"(\d{1,2})월(\d{1,2})일|(\d{1,2})/(\d{1,2})", text)
     try:
-        return date.fromisoformat(text)
+        if m:
+            month, day = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+            return date(base.year, int(month), int(day))
+        return date.fromisoformat(text) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text) else None
     except ValueError:
         return None
 
