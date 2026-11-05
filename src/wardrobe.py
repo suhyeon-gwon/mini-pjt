@@ -3,7 +3,7 @@
 import json
 import os
 import tempfile
-from datetime import date
+from datetime import date, timedelta
 
 from src.config import CALENDAR_PATH, CLOTHES_PATH, PROFILE_PATH, RECOMMENDATIONS_PATH, WEAR_LOG_PATH
 
@@ -59,6 +59,37 @@ def load_profile() -> dict:
 def load_wear_log() -> list[dict]:
     """착용 기록 전체(날짜별 입은 옷, 날씨 요약, 피드백)."""
     return read_json(WEAR_LOG_PATH)
+
+
+def recent_wear(today_iso: str, days: int) -> list[dict]:
+    """오늘을 포함한 최근 days일의 착용 기록(최신순). 옷 id 대신 이름을 담는다."""
+    names = {c["id"]: c["name"] for c in load_clothes()}
+    start = (date.fromisoformat(today_iso) - timedelta(days=days - 1)).isoformat()
+    rows = [e for e in load_wear_log() if start <= e["date"] <= today_iso]
+    return [
+        {
+            "date": e["date"],
+            "items": [names.get(i, i) for i in e.get("item_ids", [])],
+            "source": e["source"],
+            "feedback": [{"text": f["text"], "direction": f["direction"]} for f in e.get("feedback", [])],
+        }
+        for e in sorted(rows, key=lambda e: e["date"], reverse=True)
+    ]
+
+
+def recommendation_on(day_iso: str) -> dict | None:
+    """그날 추천 후보(번호별 옷 id·이름). 그날 추천이 없으면 None."""
+    rec = next((r for r in read_json(RECOMMENDATIONS_PATH) if r["date"] == day_iso), None)
+    if rec is None:
+        return None
+    names = {c["id"]: c["name"] for c in load_clothes()}
+    return {
+        "date": day_iso,
+        "candidates": [
+            {"no": c["no"], "items": [{"id": i, "name": names.get(i, i)} for i in c["item_ids"]]}
+            for c in rec["candidates"]
+        ],
+    }
 
 
 def weather_record(weather: dict) -> dict:

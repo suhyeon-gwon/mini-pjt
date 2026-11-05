@@ -1,10 +1,12 @@
 """CLI 대화 진입점(python -m src.chat)과 한 턴 공통 처리 ask()."""
 
 import asyncio
+import json
 from contextlib import AsyncExitStack
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.types import Command
 from langgraph_supervisor.handoff import METADATA_KEY_IS_HANDOFF_BACK
 
 from src.agent import build_app, thread_config
@@ -12,6 +14,24 @@ from src.config import CHECKPOINT_PATH, get_text, run_settings, today
 from src.guardrails import outfit_lines, output_guard
 from src.wardrobe import save_recommendation, weather_record, write_wear
 from src.weather import today_weather
+
+MAX_RESUMES = 5  # 한 턴에서 HITL 승인 요청에 답하며 재개하는 횟수 상한
+
+
+def reject_all(request: dict) -> dict:
+    """HITL 요청의 모든 실행을 거절하는 결정. decide가 없거나 재개 상한에 닿았을 때 데이터를 바꾸지 않게 쓴다."""
+    return {"decisions": [{"type": "reject", "message": "사용자 승인을 받지 못해 실행하지 않았습니다."}
+                          for _ in request["action_requests"]]}
+
+
+def cli_decide(request: dict) -> dict:
+    """HITL 승인 요청을 CLI에서 묻고 재개 값({"decisions": [...]})을 만든다."""
+    decisions = []
+    for action in request["action_requests"]:
+        print(f"\n  [확인 필요] {action['name']} {json.dumps(action['args'], ensure_ascii=False)}")
+        answer = input("  [a]승인 / [r]거절 > ").strip().lower()
+        decisions.append({"type": "approve"} if answer == "a" else {"type": "reject", "message": "사용자가 거절했습니다."})
+    return {"decisions": decisions}
 
 
 def _tool_call_ids(messages) -> set[str]:
@@ -81,17 +101,28 @@ async def _finish_turn(app, config: dict) -> str:
 async def ask(app, question: str, config: dict, decide=None, on_progress=None) -> dict:
     """한 턴을 처리하고 {"answer", "contexts", "trace"}를 돌려준다.
 
-    Supervisor를 stream_mode="updates"로 돌려 진행만 on_progress(한 줄 문자열)로 알리고,
+    Supervisor를 stream_mode="updates"로 돌려 진행만 on_progress(한 줄 문자열)로 알린다.
+    HITL interrupt가 오면 decide(요청)로 재개 값을 얻어 Command(resume=...)로 이어 간다(decide가 없으면 모두 거절).
     끝나면 _finish_turn()(stylist 원문 복원 → output_guard → 추천 기록·자동 기록)을 거친 응답을 돌려준다.
-    decide는 HITL interrupt의 재개 값을 얻는 함수다(HITL 연결 전까지는 쓰이지 않는다).
     contexts·trace는 FileTracer 연결 전까지 빈 리스트다.
     """
+    decide = decide or reject_all
     seen = _tool_call_ids((await app.aget_state(config)).values.get("messages", []))
-    async for event in app.astream({"messages": [HumanMessage(question)]}, config, stream_mode="updates"):
-        for node, update in event.items():
-            line = _describe(node, update, seen)
-            if on_progress and line:
-                on_progress(line)
+    payload = {"messages": [HumanMessage(question)]}
+    for attempt in range(MAX_RESUMES + 1):
+        interrupts = []
+        async for event in app.astream(payload, config, stream_mode="updates"):
+            for node, update in event.items():
+                if node == "__interrupt__":
+                    interrupts.extend(update)
+                    continue
+                line = _describe(node, update, seen)
+                if on_progress and line:
+                    on_progress(line)
+        if not interrupts:
+            break
+        request = interrupts[0].value
+        payload = Command(resume=decide(request) if attempt < MAX_RESUMES else reject_all(request))
     return {"answer": await _finish_turn(app, config), "contexts": [], "trace": []}
 
 
@@ -114,7 +145,8 @@ async def main() -> None:
                 print("사용할 수 있는 명령: /quit")
                 continue
             try:
-                result = await ask(app, question, thread_config(), on_progress=lambda line: print(f"  {line}"))
+                result = await ask(app, question, thread_config(), decide=cli_decide,
+                                   on_progress=lambda line: print(f"  {line}"))
             except Exception as e:
                 print(f"\n처리 중 오류가 발생했습니다({type(e).__name__}). 다시 시도해 주세요.")
                 continue

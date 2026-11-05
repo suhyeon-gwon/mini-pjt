@@ -530,6 +530,8 @@ id,category,input,expected_traits,forbidden,expected_tools,note
 
 같은 스모크 테스트에서 `ToolCallLimitMiddleware(thread_limit=10)`가 어느 범위로 세는지도 확인한다. 하루 스레드 전체로 누적되면 추천 두세 번 만에 상한에 걸리므로, 상한 방식을 다시 정한다(CLAUDE.md의 상한 규칙도 함께 고친다).
 
+> **스모크 테스트 결과(7-2)**: 하위 Agent의 HITL interrupt는 최상위 `astream`에 `__interrupt__`로 올라오고 `Command(resume={"decisions": [...]})`로 승인·수정·거절 모두 재개된다(D2-A 유지). `thread_limit`은 Supervisor가 하위 Agent를 부를 때마다 새로 센다(하위 Agent 상태가 턴을 넘어 남지 않음). 한 번의 하위 Agent 실행 안에서는 10회에서 막히고 하루 스레드로는 누적되지 않으므로, 폭주 방지 목적에 맞아 그대로 둔다.
+
 ---
 
 ## 16. 열린 질문 (기본값으로 진행 중)

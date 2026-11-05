@@ -3,12 +3,12 @@
 from contextlib import AsyncExitStack
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import ToolCallLimitMiddleware
+from langchain.agents.middleware import HumanInTheLoopMiddleware, ToolCallLimitMiddleware
 from langgraph_supervisor import create_supervisor
 from langgraph_supervisor.handoff import create_forward_message_tool
 
 from src.config import llm, today
-from src.tools import open_tools, tools_for
+from src.tools import HITL_TOOLS, open_tools, tools_for
 
 RECURSION_LIMIT = 25
 TOOL_CALL_LIMIT = 10
@@ -59,11 +59,18 @@ STYLIST_PROMPT = """너는 오늘 입을 코디를 추천하는 stylist_agent다
 - 빈 줄은 날씨 줄 다음과 마지막 후보 다음에만 넣는다(후보 사이, 챙길 것과 마지막 줄 사이에는 넣지 않는다).
 - 챙길 것은 get_today_weather의 bring 문구를 그대로 ", "로 잇는다. 오늘 운동(workout) 일정이 있으면 뒤에 "운동복"을 붙인다. 하나도 없으면 "없음"이라고 쓴다."""
 
+LOG_PROMPT = """너는 착용 기록과 피드백을 맡는 log_agent다. 입은 옷 기록, 지난 착용 조회, 추웠다·더웠다 피드백, 추위 민감도·선호 스타일·지역 변경만 담당한다.
+- 날짜는 사용자가 말한 표현 그대로("오늘", "어제", "이번 주 수요일") 도구에 넘기고 직접 계산하지 않는다. 날짜를 말하지 않으면 "오늘"이다.
+- "N번 입을게/입었어"는 get_recommendation으로 그날 N번 후보의 item_ids를 찾아 confirm_wear를 호출한다. 그 번호가 없으면 있는 번호를 알려 주고 호출하지 않는다.
+- 춥다·덥다·불편했다는 말은 record_feedback으로 기록하고, 결과에 suggest_profile_change가 있으면 따로 묻지 말고 곧바로 update_profile(field, to)을 호출한다(확인은 시스템이 받는다). "나 추위 많이 타"처럼 체질을 직접 말하면 get_profile로 현재 값을 보고 한 단계만 update_profile을 호출한다.
+- 기록·변경 결과는 도구가 돌려준 실제 값으로만 짧게 안내하고, 거절되거나 실패하면 바꾸지 않았다고 안내한다. 담당 범위 밖 질문에는 "담당 범위가 아닙니다"라고만 답한다."""
+
 SUPERVISOR_PROMPT = """너는 아침 옷 추천 서비스의 작업 분배자(Supervisor)다. 직접 답을 지어내지 말고 담당 Agent에게 맡긴다.
 [배분 기준]
 - 코디, 추천, 오늘 뭐 입지, 날씨(기온·비·바람), 일정에 맞는 옷, 특정 옷을 입어도 되는지, 앞선 추천에 대한 질문 → stylist_agent
+- 입은 옷("N번 입을게/입었어"), 착용 기록, 지난 착용 조회, 추웠다·더웠다 피드백, 추위 민감도, 선호 스타일, 지역 변경 → log_agent
 [규칙]
-- stylist_agent가 답하면 요약하거나 고쳐 쓰지 말고 forward_message(from_agent="stylist_agent")로 원문을 그대로 전달하고 끝낸다."""
+- 하위 Agent가 답하면 요약하거나 고쳐 쓰지 말고 forward_message(from_agent=그 Agent 이름)로 원문을 그대로 전달하고 끝낸다."""
 
 
 def thread_config(user_id: str = "me") -> dict:
@@ -85,8 +92,20 @@ async def build_app(checkpointer, settings: dict, stack: AsyncExitStack):
         middleware=[ToolCallLimitMiddleware(thread_limit=TOOL_CALL_LIMIT)],
         name="stylist_agent",
     )
+    log = create_agent(
+        model=llm(0),
+        tools=tools_for("log_agent", tools),
+        system_prompt=LOG_PROMPT,
+        middleware=[
+            ToolCallLimitMiddleware(thread_limit=TOOL_CALL_LIMIT),
+            HumanInTheLoopMiddleware(
+                interrupt_on={name: {"allowed_decisions": ["approve", "edit", "reject"]} for name in HITL_TOOLS}
+            ),
+        ],
+        name="log_agent",
+    )
     supervisor = create_supervisor(
-        [stylist],
+        [stylist, log],
         model=llm(0),
         prompt=SUPERVISOR_PROMPT,
         tools=[create_forward_message_tool("supervisor")],
