@@ -83,16 +83,16 @@ def get_calendar(
 
 @mcp.tool()
 def get_profile() -> str:
-    """내 프로필(지역, 추위 민감도 -2~+2, 선호 스타일, 최근 착용 회피 일수)을 조회한다.
+    """내 프로필(지역, 추위 민감도 -2~+2, 선호 스타일, 최근 착용 회피 일수)과 바꿀 수 있는 범위(change_rules)를 조회한다.
 
-    추천할 때 지역 이름과 선호 스타일을 확인하거나, 사용자가 자기 설정을 물을 때 쓴다.
+    추천할 때 지역 이름과 선호 스타일을 확인하거나, 사용자가 자기 설정을 물을 때, 프로필을 바꾸기 전에 범위를 볼 때 쓴다.
     프로필을 바꿀 때는 쓰지 않는다(update_profile).
 
     Args:
         없음.
     """
     try:
-        return _dump(load_profile())
+        return _dump({**load_profile(), "change_rules": feedback.change_rules()})
     except Exception as e:
         return _error(e)
 
