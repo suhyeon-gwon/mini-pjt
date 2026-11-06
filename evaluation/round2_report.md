@@ -31,10 +31,7 @@
 | 10 | positive | 내 아우터 뭐 있어? | 옷 목록 조회 | 통과 | 5 |  |
 | 11 | positive | 오늘 뭐 입지? | [state=first_day] 추천 시 자동 기록. run_eval이 wear_log에 오늘 1번이 source=auto로 기록됐는지 따로 확인 | 통과 | 5 |  |
 | 12 | positive | 오늘 2번 입을게 | [state=today_rec, hitl=approve] 착용 기록 수정 HITL | 통과 | 5 |  |
-| 13 | positive | 오늘 좀 추웠어 | [state=today_rec, hitl=approve] 당일 피드백 → 선호 수정 HITL | 오류 |  | 실행 오류: ValidationError: 1 validation error for Judgement
-forbidden.0.found
-  Field required [type=missing, input_value={'item': '묻지 않고 ...꾼 것이 아니다.'}, input_type=dict]
-    For further information visit https://errors.pydanti |
+| 13 | positive | 오늘 좀 추웠어 | [state=today_rec, hitl=approve] 당일 피드백 → 선호 수정 HITL | 오류 |  | 실행 오류: ValidationError: 1 validation error for Judgement<br>forbidden.0.found<br>Field required [type=missing, input_value={'item': '묻지 않고 ...꾼 것이 아니다.'}, input_type=dict]<br>For further information visit https://errors.pydanti |
 | 14 | positive | 어제 좀 추웠어. 오늘은 뭐 입지? | [hitl=reject] 복합 질문: log_agent → stylist_agent 순서. 프로필 변경은 거절 | 통과 | 5 |  |
 | 15 | positive | 안녕! | 도구 호출 0회 (general_agent) | 통과 | 5 |  |
 | 16 | positive | 이번 주 토요일 저녁 7시에 데이트 일정 추가해줘 | 캘린더 일정 추가 (HITL 없음). 날짜는 코드가 상대 표현을 해석 | 통과 | 5 |  |

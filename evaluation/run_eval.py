@@ -708,7 +708,9 @@ def write_report(round_no: int, results: list[dict], summary: list[str]) -> str:
              f"- judge: {JUDGE_MODEL} (temperature {JUDGE_TEMPERATURE})", "", "## 요약", "", *summary, "",
              "## 문항별 결과", "", "| id | category | 입력 | 설정(note) | 결과 | judge | 실패 사유 |", "|---|---|---|---|---|---|---|"]
     for r in results:
-        reasons = "<br>".join(f.replace("|", "\\|") for f in r["failures"])
+        # 표 칸 안에서는 줄바꿈이 행을 끊으므로(예외 메시지 등) <br>로 바꾼다
+        reasons = "<br>".join("<br>".join(s.strip() for s in f.replace("|", "\\|").splitlines() if s.strip())
+                              for f in r["failures"])
         lines.append(f"| {r['id']} | {r['category']} | {r['input'].replace('|', '\\|')} | {r['note'].replace('|', '\\|')} "
                      f"| {mark.get(r['status'], r['status'])} "
                      f"| {r['score'] or ''} | {reasons} |")
