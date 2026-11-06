@@ -200,11 +200,10 @@ python evaluation/run_eval.py --no-judge         # 판정 없이 응답과 도�
 - 통과 판정: 도구 호출·거절 문구·HITL 승인 여부는 코드로, 나머지 기대·금지 항목은 LLM judge(`temperature=0`)로 본다. judge 점수(1~5)와 착용 기록 검색 문항의 RAGAS 4지표(faithfulness, answer_relevancy, context_precision, context_recall)는 리포트에만 표시한다(extra.md §13.3).
 - 전체 실행은 약 25분, Bedrock 입력 토큰 약 100만 개를 쓴다. 하루 토큰 한도에 걸리면 그 자리에서 멈추고 채점한 문항까지 리포트에 남긴다.
 
-| 회차 | 통과 | 리포트 |
-|---|---|---|
-| 1차 | 41 / 45 | [round1_report.md](evaluation/round1_report.md) |
-| 2차 (개선 후) | 44 / 45 | [round2_report.md](evaluation/round2_report.md) |
-| 3차 (판정 스크립트 보완 후) | 45 / 45 | [round3_report.md](evaluation/round3_report.md) |
+| 회차 | 통과 | 리포트 | 문항별 결과(answer·contexts·trace) |
+|---|---|---|---|
+| 1차 | 41 / 45 | [round1_report.md](evaluation/round1_report.md) | [round1_results.json](evaluation/round1_results.json) |
+| 2차 (1차 실패 원인을 한꺼번에 고친 뒤) | 45 / 45 | [round2_report.md](evaluation/round2_report.md) | [round2_results.json](evaluation/round2_results.json) |
 
 ## 완료 기준(DoD) 점검
 
@@ -212,8 +211,8 @@ python evaluation/run_eval.py --no-judge         # 판정 없이 응답과 도�
 
 | 항목 | 기준 | 결과 | 근거 |
 |---|---|---|---|
-| 기능 | 45건 중 41건 이상 통과, 0건 기준(없는 옷·세탁 중인 옷, 우산 누락, 데이트 날 격식, 승인 없는 변경) 위반 없음 | ✅ 45 / 45, 위반 없음 | [round3_report.md](evaluation/round3_report.md) 요약 |
-| 안전 | guardrail 전부 차단, 함정 단어 정상 질문 전부 통과 | ✅ guardrail 7 / 7, 함정 단어 4 / 4 | [round3_report.md](evaluation/round3_report.md) 요약, 시연 11번과 `logs/guard_audit.log` |
+| 기능 | 45건 중 41건 이상 통과, 0건 기준(없는 옷·세탁 중인 옷, 우산 누락, 데이트 날 격식, 승인 없는 변경) 위반 없음 | ✅ 45 / 45, 위반 없음 | [round2_report.md](evaluation/round2_report.md) 요약 |
+| 안전 | guardrail 전부 차단, 함정 단어 정상 질문 전부 통과 | ✅ guardrail 7 / 7, 함정 단어 4 / 4 | [round2_report.md](evaluation/round2_report.md) 요약, 시연 11번과 `logs/guard_audit.log` |
 | HITL | 착용 확정 승인·수정·거절, 프로필 승인·거절(추위 민감도)과 수정(선호 스타일) | ✅ | 시연 2~7번, 위 실행 결과 |
 | 관측 | `logs/trace.jsonl`에 하위 Agent 도구 호출이 담긴다 | ✅ 시연 10턴에서 도구 호출 38건(stylist·closet·log·supervisor), 승인 대기 6건 기록 | `logs/trace.jsonl`의 `tool_start`/`tool_end`/`tool_interrupted`, 도구별 LLM 판단은 `logs/agent.jsonl` |
 | 설명 | 구조 다이어그램과 시연 스크립트 | ✅ | 이 문서의 [구조](#구조), [시연 스크립트](#시연-스크립트) |
