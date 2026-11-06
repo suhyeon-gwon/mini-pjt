@@ -196,7 +196,7 @@ python evaluation/run_eval.py --ids 12,13,37     # 일부 문항만
 python evaluation/run_eval.py --no-judge         # 판정 없이 응답과 도구만
 ```
 
-- 문항은 [evaluation/test_queries.csv](evaluation/test_queries.csv) 45건(positive 18 / negative 9 / edge 11 / guardrail 7)이다. 문항마다 그날 일정·상태(비 오는 날, 어제 추천 등)를 새로 만들며, 데이터 파일은 실행 전에 백업해 끝나면 복원한다. 리포트의 문항별 결과에는 입력과 함께 note(사전 조건)를 적는다.
+- 문항은 [evaluation/test_queries.csv](evaluation/test_queries.csv) 45건(positive 18 / negative 9 / edge 11 / guardrail 7)이다. 문항마다 그날 일정·상태(비 오는 날, 어제 추천 등)를 새로 만들며, 데이터 파일은 실행 전에 백업해 끝나면 복원한다. 리포트의 문항별 결과에는 입력 옆 `설정(note)` 칸에 사전 조건을 적는다.
 - 통과 판정: 도구 호출·거절 문구·HITL 승인 여부는 코드로, 나머지 기대·금지 항목은 LLM judge(`temperature=0`)로 본다. judge 점수(1~5)와 착용 기록 검색 문항의 RAGAS 4지표(faithfulness, answer_relevancy, context_precision, context_recall)는 리포트에만 표시한다(extra.md §13.3).
 - 전체 실행은 약 25분, Bedrock 입력 토큰 약 100만 개를 쓴다. 하루 토큰 한도에 걸리면 그 자리에서 멈추고 채점한 문항까지 리포트에 남긴다.
 

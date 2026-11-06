@@ -519,7 +519,7 @@ id,category,input,expected_traits,forbidden,expected_tools,note
   | `context_precision` | 검색 순서대로 각 기록이 기준 답에 쓸모 있는지 판정해, 쓸모 있는 위치의 precision@k를 평균 |
   | `context_recall` | 기준 답 항목 중 검색 결과로 뒷받침되는 비율 |
   - stylist 추천처럼 근거가 검색 결과 말고 다른 도구(날씨·후보)에도 있는 문항은 `faithfulness`·`context_recall`이 낮게 나온다(검색 결과만 근거로 보기 때문). 회차 사이 비교용으로 본다.
-- 출력: category별 통과율과 실패 문항 목록, judge 점수 평균, RAGAS 지표 평균을 콘솔에 찍고, 회차 결과를 `evaluation/round1_report.md`(1차), `evaluation/round2_report.md`(개선 후), `evaluation/round3_report.md`(2차에 남은 13번의 판정 스크립트 보완 후)로 남긴다. 리포트에는 문항별 결과(입력 칸에 `note`를 함께 적어 같은 입력도 사전 조건으로 구분한다)와 judge 점수, RAGAS 표, 실패 원인과 다음 회차에서 고칠 것을 적는다.
+- 출력: category별 통과율과 실패 문항 목록, judge 점수 평균, RAGAS 지표 평균을 콘솔에 찍고, 회차 결과를 `evaluation/round1_report.md`(1차), `evaluation/round2_report.md`(개선 후), `evaluation/round3_report.md`(2차에 남은 13번의 판정 스크립트 보완 후)로 남긴다. 리포트에는 문항별 결과(입력 옆 `설정(note)` 칸에 사전 조건을 적어 같은 입력도 구분한다)와 judge 점수, RAGAS 표, 실패 원인과 다음 회차에서 고칠 것을 적는다.
 - 필수 컬럼이 비었거나 category가 4종이 아닌 행은 조용히 넘기지 말고 "채점 제외"로 따로 표시한다.
 
 ---

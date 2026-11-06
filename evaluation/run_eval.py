@@ -706,11 +706,11 @@ def write_report(round_no: int, results: list[dict], summary: list[str]) -> str:
     lines = [f"# {round_no}차 평가 결과", "",
              f"- 실행: {datetime.now().isoformat(timespec='minutes')}, 평가 날짜 {EVAL_DATE}, WEATHER_MODE=fixture",
              f"- judge: {JUDGE_MODEL} (temperature {JUDGE_TEMPERATURE})", "", "## 요약", "", *summary, "",
-             "## 문항별 결과", "", "| id | category | 입력 | 결과 | judge | 실패 사유 |", "|---|---|---|---|---|---|"]
+             "## 문항별 결과", "", "| id | category | 입력 | 설정(note) | 결과 | judge | 실패 사유 |", "|---|---|---|---|---|---|---|"]
     for r in results:
         reasons = "<br>".join(f.replace("|", "\\|") for f in r["failures"])
-        asked = r["input"] + (f"<br>{r['note']}" if r["note"] else "")  # 같은 입력도 사전 조건(note)으로 구분되게
-        lines.append(f"| {r['id']} | {r['category']} | {asked.replace('|', '\\|')} | {mark.get(r['status'], r['status'])} "
+        lines.append(f"| {r['id']} | {r['category']} | {r['input'].replace('|', '\\|')} | {r['note'].replace('|', '\\|')} "
+                     f"| {mark.get(r['status'], r['status'])} "
                      f"| {r['score'] or ''} | {reasons} |")
     rag = [r for r in results if r["ragas"] or r.get("ragas_error")]
     if rag:
