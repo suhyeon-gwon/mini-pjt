@@ -191,7 +191,7 @@ Get-Content data\profile.json -Encoding UTF8                                    
 
 ```powershell
 python evaluation/run_eval.py                    # 전체 45건, 콘솔에만 출력
-python evaluation/run_eval.py --round 4          # 회차 리포트 evaluation/round4_report.md도 쓴다(같은 번호면 덮어쓴다)
+python evaluation/run_eval.py --round 4          # 회차 리포트 round4_report.md와 문항별 결과 round4_results.json도 쓴다(같은 번호면 덮어쓴다)
 python evaluation/run_eval.py --ids 12,13,37     # 일부 문항만
 python evaluation/run_eval.py --no-judge         # 판정 없이 응답과 도구만
 ```

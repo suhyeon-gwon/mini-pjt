@@ -2,6 +2,7 @@
 판정과 함께 LLM-as-Judge 점수(1~5)와 검색 문항의 RAGAS 4지표를 계산해 리포트에만 표시한다.
 
 실행: python evaluation/run_eval.py [--ids 1,2,11] [--no-judge] [--round 1]
+- --round N이면 evaluation/round{N}_report.md(리포트)와 round{N}_results.json(문항별 answer·contexts·trace)을 쓴다.
 - 항상 WEATHER_MODE=fixture, 평가 날짜(TODAY_OVERRIDE)는 2026-11-05로 고정한다(실제 날씨는 날마다 달라 회차 비교가 안 된다).
 - data/*.json은 시작할 때 바이트 그대로 보관하고 끝나면(중단돼도) 되돌린다.
 """
@@ -601,7 +602,8 @@ async def run(rows: list[dict], judge_on: bool) -> list[dict]:
     try:
         for no, row in enumerate(rows, 1):
             out = {"id": row["id"], "category": row["category"], "input": row["input"], "note": row["note"],
-                   "status": "excluded", "failures": [], "answer": "", "tools": [], "score": None, "ragas": None}
+                   "status": "excluded", "failures": [], "answer": "", "tools": [], "score": None, "ragas": None,
+                   "contexts": [], "trace": []}
             results.append(out)
             if stopped:
                 out["status"], out["failures"] = "not_run", [f"미실행: {stopped}"]
@@ -627,6 +629,7 @@ async def run(rows: list[dict], judge_on: bool) -> list[dict]:
                     current = settings
                 result = await ask(app, row["input"], thread_config(f"eval-{row['id']}"), decide=decide_for(pre["hitl"]))
                 out["answer"], out["tools"] = result["answer"], [(t["tool"], t["status"]) for t in result["trace"]]
+                out["contexts"], out["trace"] = result["contexts"], result["trace"]
                 if judge_on:
                     failures, traits, forbidden = code_checks(row, result)
                     judged, out["score"] = await judge(row, result, facts, traits, forbidden)
@@ -734,11 +737,32 @@ def write_report(round_no: int, results: list[dict], summary: list[str]) -> str:
     return path
 
 
+RESULT_KEYS = ("id", "category", "input", "note", "status", "failures", "score", "ragas", "ragas_error",
+               "answer", "contexts", "trace")
+
+
+def write_results(round_no: int, results: list[dict], summary: list[str]) -> str:
+    """evaluation/round{N}_results.json을 쓴다. 문항마다 판정과 ask()가 돌려준 answer·contexts·trace(extra.md §12.3)를 담는다."""
+    path = os.path.join(ROOT_DIR, "evaluation", f"round{round_no}_results.json")
+    data = {
+        "round": round_no,
+        "run_at": datetime.now().isoformat(timespec="minutes"),
+        "eval_date": EVAL_DATE,
+        "weather_mode": "fixture",
+        "judge": {"model": JUDGE_MODEL, "temperature": JUDGE_TEMPERATURE},
+        "summary": summary,
+        "results": [{k: r[k] for k in RESULT_KEYS if k in r} for r in results],
+    }
+    write_json(path, data)
+    return path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="test_queries.csv 자동 판정")
     parser.add_argument("--ids", default="", help="돌릴 문항 id(쉼표 구분). 비우면 전체")
     parser.add_argument("--no-judge", action="store_true", help="판정 없이 응답과 도구만 찍는다")
-    parser.add_argument("--round", type=int, default=0, help="회차 번호. 주면 evaluation/round{N}_report.md를 쓴다")
+    parser.add_argument("--round", type=int, default=0,
+                        help="회차 번호. 주면 evaluation/round{N}_report.md와 round{N}_results.json을 쓴다")
     args = parser.parse_args()
 
     rows = load_rows()
@@ -753,6 +777,7 @@ def main() -> None:
     print("\n" + "\n".join(summary))
     if args.round:
         print(f"리포트: {write_report(args.round, results, summary)}")
+        print(f"결과 JSON: {write_results(args.round, results, summary)}")
 
 
 if __name__ == "__main__":

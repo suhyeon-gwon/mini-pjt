@@ -36,6 +36,7 @@ evaluation/run_eval.py         자동 판정 스크립트 (통과 판정 + LLM-a
 evaluation/round1_report.md    1차 자체 평가 결과
 evaluation/round2_report.md    2차 자체 평가 결과 (개선 후)
 evaluation/round3_report.md    3차 자체 평가 결과 (판정 스크립트 보완 후)
+evaluation/round{N}_results.json 회차별 문항 결과 (판정 + ask()의 answer·contexts·trace)
 logs/                          trace.jsonl, agent.jsonl, guard_audit.log
 SERVICE.md                     서비스 스펙
 README.md                      
@@ -78,7 +79,7 @@ run.sh, Dockerfile             선택
   - 여러 값은 `;`로 구분한다. `expected_tools`에는 실제 도구 이름을 쓴다
   - `forbidden`에서 작은따옴표로 감싼 항목은 문자열 그대로 검사하고, 나머지는 judge가 판정한다
   - `note`는 기본값과 다른 사전 조건이 있으면 `[fixture=..., calendar=..., state=..., hitl=...]`로 시작한다. 없으면 생략하고 기본값을 쓴다
-  - 1차·2차·3차 결과는 `evaluation/round1_report.md`, `round2_report.md`, `round3_report.md`에 남긴다
+  - 1차·2차·3차 결과는 `evaluation/round1_report.md`, `round2_report.md`, `round3_report.md`에 남긴다. 같은 회차의 문항별 `answer`·`contexts`·`trace`는 `round{N}_results.json`에 남긴다
 
 ## 코드 규칙
 - 파일 하나에 한 가지 역할만 둔다
