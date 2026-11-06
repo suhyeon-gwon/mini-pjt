@@ -2,7 +2,7 @@
 판정과 함께 LLM-as-Judge 점수(1~5)와 검색 문항의 RAGAS 4지표를 계산해 리포트에만 표시한다.
 
 실행: python evaluation/run_eval.py [--ids 1,2,11] [--no-judge] [--round 1]
-- 항상 WEATHER_MODE=fixture, 평가 날짜(TODAY_OVERRIDE)는 2026-11-05로 고정한다.
+- 항상 WEATHER_MODE=fixture, 평가 날짜(TODAY_OVERRIDE)는 2026-11-05로 고정한다(실제 날씨는 날마다 달라 회차 비교가 안 된다).
 - data/*.json은 시작할 때 바이트 그대로 보관하고 끝나면(중단돼도) 되돌린다.
 """
 
@@ -39,7 +39,7 @@ CSV_PATH = os.path.join(ROOT_DIR, "evaluation", "test_queries.csv")
 COLUMNS = ["id", "category", "input", "expected_traits", "forbidden", "expected_tools", "note"]
 REQUIRED = ("id", "category", "input", "expected_traits")
 CATEGORIES = ("positive", "negative", "edge", "guardrail")
-EVAL_DATE = "2026-11-05"  # 기본 일정이 없는 날. 샘플 데이터와 시드 기록의 "오늘"
+EVAL_DATE = "2026-11-05"  # 기본 일정이 없는 날. 이날과 그 뒤의 시드 기록은 make_baseline이 뺀다
 DATA_FILES = (CLOTHES_PATH, WEAR_LOG_PATH, PROFILE_PATH, CALENDAR_PATH, RECOMMENDATIONS_PATH)
 PASS_TARGET = 41  # SERVICE.md §5: 45건 중 41건 이상
 
@@ -709,7 +709,8 @@ def write_report(round_no: int, results: list[dict], summary: list[str]) -> str:
              "## 문항별 결과", "", "| id | category | 입력 | 결과 | judge | 실패 사유 |", "|---|---|---|---|---|---|"]
     for r in results:
         reasons = "<br>".join(f.replace("|", "\\|") for f in r["failures"])
-        lines.append(f"| {r['id']} | {r['category']} | {r['input'].replace('|', '\\|')} | {mark.get(r['status'], r['status'])} "
+        asked = r["input"] + (f"<br>{r['note']}" if r["note"] else "")  # 같은 입력도 사전 조건(note)으로 구분되게
+        lines.append(f"| {r['id']} | {r['category']} | {asked.replace('|', '\\|')} | {mark.get(r['status'], r['status'])} "
                      f"| {r['score'] or ''} | {reasons} |")
     rag = [r for r in results if r["ragas"] or r.get("ragas_error")]
     if rag:

@@ -276,7 +276,7 @@ docstring은 lecture.md §6.3 규칙(무엇/언제/언제 아님/인자)을 따�
   ```
 - **메타데이터**: `date`, `rain`(bool), `event_types`, `item_ids`, `directions`. 목록 값은 쉼표로 이은 문자열로 넣는다(Chroma 메타데이터에 리스트를 넣지 않는다).
 - **검색 순서**
-  1. 조건 필터(코드): `rain`, `event_type`, `direction`으로 거른다. `item_name`은 clothes.json의 `name`과 정확히 일치해야 id로 바꾼다. 없으면 "옷장에 없는 옷입니다. 가능한 이름: …"을 반환한다
+  1. 조건 필터(코드): 오늘(`today()`)과 그 뒤 날짜의 기록은 지난 기록이 아니므로 뺀다(오늘 기록은 `get_recent_wear`). `rain`, `event_type`, `direction`으로 거른다. `item_name`은 clothes.json의 `name`과 정확히 일치해야 id로 바꾼다. 없으면 "옷장에 없는 옷입니다. 가능한 이름: …"을 반환한다
   2. 남은 기록이 0건이면 "조건에 맞는 착용 기록이 없습니다"를 반환한다(지어내지 않게). `k`건 이하면 검색 없이 최신순으로 전부 반환한다
   3. 하이브리드 검색: BM25(`kiwipiepy` 토크나이저, 남은 문서로 매번 생성) 0.3 + 벡터(Chroma, `filter={"date": {"$in": 남은 날짜}}`) 0.7을 `EnsembleRetriever`로 묶어 상위 `k`건을 고른다(lecture.md §4.6)
   4. 결과는 JSON 문자열: 날짜별 `weather`, 일정, 입은 옷 이름, `feedback`, `source`
@@ -505,7 +505,7 @@ id,category,input,expected_traits,forbidden,expected_tools,note
   3. `expected_traits`: 항목마다 judge가 `answer`의 충족 여부를 판정한다 (lecture.md §9.5 LLM-as-Judge, judge 모델과 파라미터는 상수로 고정, `temperature=0`)
 - 구현 세부
   - 실행: `python evaluation/run_eval.py [--ids 1,2] [--no-judge] [--round N]`. `--no-judge`는 판정 없이 응답과 도구만 찍고, `--round N`은 회차 리포트를 쓴다
-  - 평가 날짜는 `EVAL_DATE = 2026-11-05`(기본 일정이 없는 날)로 고정한다. 체크포인터는 인메모리(`InMemorySaver`)라 `logs/checkpoints.sqlite`에 평가 스레드가 쌓이지 않는다
+  - 평가 날짜는 `EVAL_DATE = 2026-11-05`(기본 일정이 없는 날)로 고정한다. 실제 날씨는 날마다 달라 회차 비교가 안 되므로 날씨도 fixture로만 돌린다(실API 동작은 시연과 README의 실연동 결과로 보인다). 그날 일정은 문항의 `calendar`로 새로 만들고, 평가 날짜와 그 뒤의 착용·추천 기록(11-05~11-10 시드 포함)은 빼고 시작한다. 체크포인터는 인메모리(`InMemorySaver`)라 `logs/checkpoints.sqlite`에 평가 스레드가 쌓이지 않는다
   - 문항마다 백업해 둔 데이터에서 시작하되, 평가 날짜 이후의 착용·추천 기록(CLI로 시험한 흔적)은 빼고 시작한다. 그 위에 `calendar`(오늘 일정)와 `state`를 만든다. `history`는 만든 뒤 위 정의를 코드로 확인하고, 어긋나면 그 문항을 오류로 표시한다
   - 코드 판정을 더 한다: `expected_traits`·`forbidden`의 "정해진 거절 문구"는 `REFUSAL_MESSAGES` 문자열로 판정하고, `note`의 "X·Y 호출 없어야 함"은 `trace`에 그 도구가 없어야, "도구 호출 0회"는 `contexts`가 비어야 통과다. `note`에 `source=auto`가 있으면(11번) 오늘 착용 기록이 1번 후보와 같은 `auto` 기록인지 본다. `expected_traits`의 "확인 요청" 항목(HITL 승인 요청)은 `trace`에 `interrupted`가 있으면 충족이고, `forbidden`의 "묻지 않고 …"·"승인 없이 …" 항목은 `confirm_wear`·`update_profile`이 앞선 `interrupted` 없이 `ok`로 실행됐을 때만 등장으로 본다
   - judge에는 최종 응답과 함께 옷장, 착용 기록, 사전 조건, 이번 턴 도구 호출·결과를 사실 확인 자료로 넘긴다(지어낸 옷·기록 판정용). HITL 승인 요청은 응답이 아니라 승인 화면으로 가므로 `trace`에 `interrupted`가 있으면 확인 요청을 한 것으로 본다
@@ -518,7 +518,7 @@ id,category,input,expected_traits,forbidden,expected_tools,note
   | `context_precision` | 검색 순서대로 각 기록이 기준 답에 쓸모 있는지 판정해, 쓸모 있는 위치의 precision@k를 평균 |
   | `context_recall` | 기준 답 항목 중 검색 결과로 뒷받침되는 비율 |
   - stylist 추천처럼 근거가 검색 결과 말고 다른 도구(날씨·후보)에도 있는 문항은 `faithfulness`·`context_recall`이 낮게 나온다(검색 결과만 근거로 보기 때문). 회차 사이 비교용으로 본다.
-- 출력: category별 통과율과 실패 문항 목록, judge 점수 평균, RAGAS 지표 평균을 콘솔에 찍고, 회차 결과를 `evaluation/round1_report.md`(1차), `evaluation/round2_report.md`(개선 후)로 남긴다. 리포트에는 문항별 judge 점수와 RAGAS 표, 실패 원인과 다음 회차에서 고칠 것을 적는다.
+- 출력: category별 통과율과 실패 문항 목록, judge 점수 평균, RAGAS 지표 평균을 콘솔에 찍고, 회차 결과를 `evaluation/round1_report.md`(1차), `evaluation/round2_report.md`(개선 후)로 남긴다. 리포트에는 문항별 결과(입력 칸에 `note`를 함께 적어 같은 입력도 사전 조건으로 구분한다)와 judge 점수, RAGAS 표, 실패 원인과 다음 회차에서 고칠 것을 적는다.
 - 필수 컬럼이 비었거나 category가 4종이 아닌 행은 조용히 넘기지 말고 "채점 제외"로 따로 표시한다.
 
 ---
@@ -560,5 +560,5 @@ id,category,input,expected_traits,forbidden,expected_tools,note
 | 옷 추가에 HITL을 걸지 | 걸지 않는다. 저장한 값을 되보여주고 틀리면 수정 요청을 받는다 |
 | 가드레일 정책값(D8) | §11 기본값. LLM 검사 실패 시 fail-open |
 | 최근 착용 회피 기간 | 3일 |
-| 샘플 데이터의 기준 날짜 | 2026-11-05(목). 샘플 캘린더와 시드 기록이 이 날을 오늘로 보고 만들어졌다. 코드의 `today()`는 이 날짜를 박지 않고 `TODAY_OVERRIDE`가 없으면 시스템 날짜를 쓴다. 평가는 `TODAY_OVERRIDE=2026-11-05`로 고정하고, 시연에서 문서대로 보이려면 `/date 2026-11-05`를 쓴다 |
+| 샘플 데이터의 기준 날짜 | 시드 착용·추천 기록은 2026-10-29~11-10(11-05부터는 날마다)이라, 2026-11-05~11-11 어느 날을 오늘로 해도 "어제"와 최근 기록이 있다. 코드의 `today()`는 `TODAY_OVERRIDE`가 없으면 시스템 날짜다. 평가는 fixture와 2026-11-05로 고정하고(§13.3), 시연은 날짜를 고정하지 않고 실제 오늘로 한다. live 모드는 실제 날짜에서만 돈다(기상청은 최근 3일 발표만 준다). 실제 오늘보다 뒤 날짜의 시드 기록은 검색·최근 착용·비슷한 기온의 날에서 빠지지만, 시드가 있는 날을 오늘로 쓰면 그날 시드 기록(auto)은 추천 때 새 1번으로 바뀌고 피드백은 남는다. 다른 날을 미리 보려면 fixture 모드에서 `/date`를 쓴다 |
 | 착용 기록 검색의 하이브리드 가중치 | BM25 0.3 / 벡터 0.7. 평가 결과를 보고 조정 |

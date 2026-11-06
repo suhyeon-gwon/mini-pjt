@@ -1,1 +1,236 @@
-[]
+[
+  {
+    "date": "2026-11-05",
+    "candidates": [
+      {
+        "no": 1,
+        "item_ids": [
+          "c001",
+          "c006",
+          "c013",
+          "c017"
+        ]
+      },
+      {
+        "no": 2,
+        "item_ids": [
+          "c002",
+          "c009",
+          "c013",
+          "c018"
+        ]
+      },
+      {
+        "no": 3,
+        "item_ids": [
+          "c001",
+          "c007",
+          "c012",
+          "c017"
+        ]
+      }
+    ],
+    "weather": {
+      "am_feels": 12.5,
+      "day_feels": 16.5,
+      "pm_feels": 13.0,
+      "range": 6,
+      "rain": false
+    }
+  },
+  {
+    "date": "2026-11-06",
+    "candidates": [
+      {
+        "no": 1,
+        "item_ids": [
+          "c004",
+          "c011",
+          "c012",
+          "c017"
+        ]
+      },
+      {
+        "no": 2,
+        "item_ids": [
+          "c001",
+          "c006",
+          "c012",
+          "c017"
+        ]
+      },
+      {
+        "no": 3,
+        "item_ids": [
+          "c004",
+          "c007",
+          "c014",
+          "c017"
+        ]
+      }
+    ],
+    "weather": {
+      "am_feels": 11.0,
+      "day_feels": 16.0,
+      "pm_feels": 11.5,
+      "range": 7,
+      "rain": false
+    }
+  },
+  {
+    "date": "2026-11-07",
+    "candidates": [
+      {
+        "no": 1,
+        "item_ids": [
+          "c001",
+          "c009",
+          "c013",
+          "c017"
+        ]
+      },
+      {
+        "no": 2,
+        "item_ids": [
+          "c003",
+          "c006",
+          "c013",
+          "c017"
+        ]
+      },
+      {
+        "no": 3,
+        "item_ids": [
+          "c001",
+          "c006",
+          "c012",
+          "c017"
+        ]
+      }
+    ],
+    "weather": {
+      "am_feels": 13.0,
+      "day_feels": 15.0,
+      "pm_feels": 13.5,
+      "range": 3,
+      "rain": true
+    }
+  },
+  {
+    "date": "2026-11-08",
+    "candidates": [
+      {
+        "no": 1,
+        "item_ids": [
+          "c002",
+          "c006",
+          "c013",
+          "c018"
+        ]
+      },
+      {
+        "no": 2,
+        "item_ids": [
+          "c001",
+          "c011",
+          "c013",
+          "c017"
+        ]
+      },
+      {
+        "no": 3,
+        "item_ids": [
+          "c002",
+          "c009",
+          "c012",
+          "c018"
+        ]
+      }
+    ],
+    "weather": {
+      "am_feels": 9.0,
+      "day_feels": 14.5,
+      "pm_feels": 10.0,
+      "range": 8,
+      "rain": false
+    }
+  },
+  {
+    "date": "2026-11-09",
+    "candidates": [
+      {
+        "no": 1,
+        "item_ids": [
+          "c003",
+          "c010",
+          "c015",
+          "c019"
+        ]
+      },
+      {
+        "no": 2,
+        "item_ids": [
+          "c002",
+          "c006",
+          "c013",
+          "c018"
+        ]
+      },
+      {
+        "no": 3,
+        "item_ids": [
+          "c001",
+          "c006",
+          "c012",
+          "c017"
+        ]
+      }
+    ],
+    "weather": {
+      "am_feels": 7.5,
+      "day_feels": 13.0,
+      "pm_feels": 9.0,
+      "range": 8,
+      "rain": false
+    }
+  },
+  {
+    "date": "2026-11-10",
+    "candidates": [
+      {
+        "no": 1,
+        "item_ids": [
+          "c004",
+          "c007",
+          "c012",
+          "c017"
+        ]
+      },
+      {
+        "no": 2,
+        "item_ids": [
+          "c004",
+          "c006",
+          "c014",
+          "c017"
+        ]
+      },
+      {
+        "no": 3,
+        "item_ids": [
+          "c002",
+          "c011",
+          "c013",
+          "c018"
+        ]
+      }
+    ],
+    "weather": {
+      "am_feels": 7.0,
+      "day_feels": 12.5,
+      "pm_feels": 8.5,
+      "range": 7,
+      "rain": false
+    }
+  }
+]

@@ -106,5 +106,137 @@
       "rain": false
     },
     "feedback": []
+  },
+  {
+    "date": "2026-11-05",
+    "item_ids": [
+      "c001",
+      "c006",
+      "c013",
+      "c017"
+    ],
+    "source": "auto",
+    "weather": {
+      "am_feels": 12.5,
+      "day_feels": 16.5,
+      "pm_feels": 13.0,
+      "range": 6,
+      "rain": false
+    },
+    "feedback": []
+  },
+  {
+    "date": "2026-11-06",
+    "item_ids": [
+      "c004",
+      "c011",
+      "c012",
+      "c017"
+    ],
+    "source": "auto",
+    "weather": {
+      "am_feels": 11.0,
+      "day_feels": 16.0,
+      "pm_feels": 11.5,
+      "range": 7,
+      "rain": false
+    },
+    "feedback": [
+      {
+        "text": "저녁 데이트 때 딱 좋았어",
+        "direction": "ok",
+        "at": "2026-11-06T22:30:00"
+      }
+    ]
+  },
+  {
+    "date": "2026-11-07",
+    "item_ids": [
+      "c001",
+      "c009",
+      "c013",
+      "c017"
+    ],
+    "source": "auto",
+    "weather": {
+      "am_feels": 13.0,
+      "day_feels": 15.0,
+      "pm_feels": 13.5,
+      "range": 3,
+      "rain": true
+    },
+    "feedback": [
+      {
+        "text": "비 왔는데 부츠 덕에 발이 안 젖었어",
+        "direction": "ok",
+        "at": "2026-11-07T21:00:00"
+      }
+    ]
+  },
+  {
+    "date": "2026-11-08",
+    "item_ids": [
+      "c002",
+      "c006",
+      "c013",
+      "c018"
+    ],
+    "source": "auto",
+    "weather": {
+      "am_feels": 9.0,
+      "day_feels": 14.5,
+      "pm_feels": 10.0,
+      "range": 8,
+      "rain": false
+    },
+    "feedback": [
+      {
+        "text": "아침에 좀 추웠어",
+        "direction": "cold",
+        "at": "2026-11-08T20:40:00"
+      }
+    ]
+  },
+  {
+    "date": "2026-11-09",
+    "item_ids": [
+      "c003",
+      "c010",
+      "c015",
+      "c019"
+    ],
+    "source": "auto",
+    "weather": {
+      "am_feels": 7.5,
+      "day_feels": 13.0,
+      "pm_feels": 9.0,
+      "range": 8,
+      "rain": false
+    },
+    "feedback": [
+      {
+        "text": "운동할 땐 딱 좋았어",
+        "direction": "ok",
+        "at": "2026-11-09T09:10:00"
+      }
+    ]
+  },
+  {
+    "date": "2026-11-10",
+    "item_ids": [
+      "c004",
+      "c007",
+      "c012",
+      "c017"
+    ],
+    "source": "auto",
+    "weather": {
+      "am_feels": 7.0,
+      "day_feels": 12.5,
+      "pm_feels": 8.5,
+      "range": 7,
+      "rain": false
+    },
+    "feedback": []
   }
 ]

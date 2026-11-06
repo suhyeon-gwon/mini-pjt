@@ -57,7 +57,7 @@ run.sh, Dockerfile             선택
   - `contexts`: 이번 턴에 실행된 MCP 도구 결과 전체(호출 순서). 항목은 `{"kind": "retrieval" | "tool", "agent", "tool", "content"}`이고 `search_wear_history`만 `retrieval`이다. Supervisor 핸드오프는 넣지 않는다
   - `trace`: 이번 턴의 도구 호출 목록 `{"agent", "tool", "args", "status": "ok" | "error" | "interrupted"}`. HITL interrupt는 `ask()`가 `interrupted`로 넣는다. `expected_tools` 판정은 이것으로 한다
   - `contexts`·`trace`는 `FileTracer`가 모은 이번 턴의 도구 이벤트로 만든다. `input_guard`에서 막히면 둘 다 빈 리스트다
-- "오늘"은 `today()`로만 얻는다. `TODAY_OVERRIDE`가 있으면 그 값, 없으면 시스템 날짜다(코드에 날짜를 박지 않는다). 샘플 데이터와 시드 기록은 2026-11-05(목)을 오늘로 보고 만들었으므로, 평가는 `TODAY_OVERRIDE=2026-11-05`로 고정하고 시연에서 문서대로 보이려면 `/date 2026-11-05`를 쓴다
+- "오늘"은 `today()`로만 얻는다. `TODAY_OVERRIDE`가 있으면 그 값, 없으면 시스템 날짜다(코드에 날짜를 박지 않는다). 시드 착용·추천 기록은 2026-10-29~11-10이라 2026-11-05~11-11 어느 날이든 "어제" 기록이 있다. 평가는 실제 날씨가 날마다 달라 재현되지 않으므로 fixture와 `TODAY_OVERRIDE=2026-11-05`로 고정한다(`run_eval`이 이날과 그 뒤의 시드 기록은 빼고 시작한다). 시연은 날짜를 고정하지 않고 실제 오늘로 한다. live 모드는 실제 날짜에서만 돈다(기상청은 최근 3일치만 준다). 다른 날을 미리 보려면 fixture 모드에서만 `/date`를 쓴다
 - thread_id는 `{user_id}:{YYYY-MM-DD}`, 기본 user_id는 `me`. 평가는 user_id 자리에 `eval-{문항 id}`를 쓴다(데이터 파일은 user_id로 나누지 않는다)
 - 도구 결과는 JSON 문자열이다. 오류는 예외 대신 "무엇이 잘못됐고 어떻게 다시 호출할지"를 담은 문자열로 돌려준다
 - 추천 출력: 오늘 날씨 한 줄 → 번호 붙은 후보 2~3개(각각 이유) → `챙길 것:` 한 줄(날씨 플래그 문구 + 운동 일정이면 "운동복", 없으면 "없음"). 옷 이름은 clothes.json의 `name`을 그대로 쓴다

@@ -7,7 +7,7 @@ import json
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 
-from src.config import CALENDAR_PATH, REGION
+from src.config import CALENDAR_PATH, REGION, today
 from src.wardrobe import load_clothes, load_wear_log, read_json
 
 EMBED_MODEL = "amazon.titan-embed-text-v2:0"
@@ -159,6 +159,7 @@ def search(query: str, rain: str = "", event_type: str = "", item_name: str = ""
            k: int = 3) -> dict | str:
     """조건 필터(코드) → 하이브리드 검색으로 지난 착용 기록을 찾는다.
 
+    오늘(today()) 이후 기록은 지난 기록이 아니므로 뺀다(오늘 기록은 get_recent_wear로 본다).
     rain·event_type·direction·item_name으로 먼저 거르고, 0건이면 안내 문자열, k건 이하면 검색 없이 최신순 전부,
     그보다 많으면 하이브리드 검색 상위 k건을 돌려준다. item_name은 clothes.json의 name과 정확히 일치해야 한다.
     """
@@ -172,8 +173,11 @@ def search(query: str, rain: str = "", event_type: str = "", item_name: str = ""
             close = difflib.get_close_matches(item_name.strip(), list(ids), n=5, cutoff=0.3) or list(ids)
             return f"옷장에 없는 옷입니다. 가능한 이름: {', '.join(close)}. 이 중 하나로 다시 호출하거나, 그 옷을 입은 기록은 없다고 안내하세요."
 
+    today_iso = today().isoformat()
+
     def keep(m: dict) -> bool:
-        return ((not rain or m["rain"] == (rain == "yes"))
+        return (m["date"] < today_iso
+                and (not rain or m["rain"] == (rain == "yes"))
                 and (not event_type or event_type in m["event_types"].split(","))
                 and (not item_id or item_id in m["item_ids"].split(","))
                 and (not direction or direction in m["directions"].split(",")))
