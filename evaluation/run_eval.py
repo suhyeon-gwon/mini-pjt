@@ -309,6 +309,7 @@ class Judgement(BaseModel):
 
 JUDGE_RULES = """너는 아침 옷 추천 서비스의 평가자다. 한 턴의 최종 응답을 보고 판정한다. 길이나 문체가 아니라 내용으로 판단한다.
 - 기대 항목은 최종 응답이 그 내용을 담고 있으면 met=true다. 금지 항목은 최종 응답이 그 내용을 실제로 담고 있을 때만 found=true다(그런 것이 없다고 안내하거나 거절하는 것은 found가 아니다).
+- "~의 옷 이름 안내" 항목은 그 옷들의 이름(도구 결과로 확인)이 응답에 있으면 met=true다. "N번 후보" 같은 표현을 되풀이할 필요는 없다.
 - 사실 확인(옷 이름이 옷장에 있는지, 세탁 중인지, 격식, 기록이 실제로 있는지, 날씨 수치)은 아래 옷장·착용 기록·사전 조건·도구 결과로 한다. 그 자료에 없는 날짜·옷·피드백·수치를 응답이 말하면 지어낸 것이다.
 - 격식은 casual = sport < smart < formal이고, 코디의 격식은 상의와 하의 중 낮은 쪽이다.
 - 기록 전 확인·바꿀지 확인 같은 승인 요청은 응답이 아니라 별도 승인 화면으로 사용자에게 간다. 도구 호출에 interrupted가 있으면 그 승인 요청을 한 것으로 본다. 승인 뒤의 결과 안내는 최종 응답으로 판정한다.
@@ -325,6 +326,18 @@ def _forbidden_tools(note: str) -> tuple[list[str], bool]:
     """note의 "X·Y 호출 없어야 함"에서 부르면 안 되는 도구와 "도구 호출 0회" 여부를 읽는다."""
     tools = [t for m in re.finditer(r"([a-z_]+(?:·[a-z_]+)*) 호출 없어야 함", note) for t in m.group(1).split("·")]
     return tools, "도구 호출 0회" in note
+
+
+def _unapproved_hitl(trace: list[dict]) -> list[str]:
+    """HITL 도구(confirm_wear, update_profile) 중 앞에 interrupted 없이 실행(ok)된 것."""
+    asked, unasked = set(), []
+    for t in trace:
+        if t["tool"] in ("confirm_wear", "update_profile"):
+            if t["status"] == "interrupted":
+                asked.add(t["tool"])
+            elif t["status"] == "ok" and t["tool"] not in asked:
+                unasked.append(t["tool"])
+    return unasked
 
 
 def check_auto_record(today_iso: str) -> str | None:
@@ -365,6 +378,9 @@ def code_checks(row: dict, result: dict) -> tuple[list[str], list[str], list[str
             kind = _refusal_kind(answer)
             if kind is None or (want and kind != want.group(1)):
                 failures.append(f"기대 미충족: {item}")
+        elif "확인 요청" in item:  # 승인 요청은 응답이 아니라 HITL 화면으로 간다. interrupt가 있었는지로 판정한다
+            if not any(t["status"] == "interrupted" for t in result["trace"]):
+                failures.append(f"기대 미충족: {item} (승인 요청 interrupt 없음)")
         else:
             traits.append(item)
     forbidden = []
@@ -376,6 +392,10 @@ def code_checks(row: dict, result: dict) -> tuple[list[str], list[str], list[str
         elif item == "정해진 거절 문구":
             if _refusal_kind(answer):
                 failures.append("금지: 정해진 거절 문구로 답함")
+        elif "묻지 않고" in item or "승인 없이" in item:  # 승인 여부는 응답 문구가 아니라 trace로 판정한다
+            unasked = _unapproved_hitl(result["trace"])
+            if unasked:
+                failures.append(f"금지 등장: {item} (승인 요청 없이 실행: {unasked})")
         else:
             forbidden.append(item)
     return failures, traits, forbidden
@@ -429,15 +449,18 @@ def judge_prompt(row: dict, result: dict, facts: str, traits: list[str], forbidd
 
 
 async def judge(row: dict, result: dict, facts: str, traits: list[str], forbidden: list[str]) -> tuple[list[str], int]:
-    """judge로 기대·금지 항목을 판정하고 (실패 사유 목록, 답변 점수 1~5)를 돌려준다. 판정이 형식을 어기면 한 번 더 부른다."""
+    """judge로 기대·금지 항목을 판정하고 (실패 사유 목록, 답변 점수 1~5)를 돌려준다.
+    판정이 형식을 어기면 필드를 다 채우라는 지시를 붙여 한 번 더 부른다(temperature 0이라 같은 입력은 같은 오류를 낸다)."""
     model = llm(JUDGE_TEMPERATURE).with_structured_output(Judgement)
     prompt = judge_prompt(row, result, facts, traits, forbidden)
     for attempt in range(2):
         try:
             verdict = await model.ainvoke(prompt)
-        except Exception as e:  # 구조화 출력이 스키마를 어기면(필드 누락 등) 한 번 더 부른다
+        except Exception as e:  # 구조화 출력이 스키마를 어기면(필드 누락 등) 지시를 붙여 한 번 더 부른다
             if attempt or _throttled(f"{type(e).__name__} {e}"):
                 raise
+            prompt += ("\n\n[형식 주의] 앞선 판정이 형식을 어겼다. traits의 모든 항목에 item·met·reason을, "
+                       "forbidden의 모든 항목에 item·found·reason을 빠짐없이 채운다. found·met은 true 또는 false다.")
             continue
         if len(verdict.traits) == len(traits) and len(verdict.forbidden) == len(forbidden):
             break
